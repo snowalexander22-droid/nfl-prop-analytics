@@ -218,24 +218,26 @@ def call_gemini_structured(
     system_instruction: str,
     temperature: float = 0.2,
 ) -> Any:
-    """Calls gemini-3.8-flash with structured JSON output and automatic fallback."""
+    """Calls gemini-3.8-flash with structured JSON output and automatic rate-limit backoff."""
     for model_name in [PRIMARY_GEMINI_MODEL, FALLBACK_GEMINI_MODEL]:
-        try:
-            response = client.models.generate_content(
-                model=model_name,
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    system_instruction=system_instruction,
-                    response_mime_type="application/json",
-                    response_schema=schema,
-                    temperature=temperature,
-                ),
-            )
-            if response and response.text:
-                return json.loads(response.text)
-        except Exception as exc:
-            logger.warning(f"Gemini call with model '{model_name}' encountered error: {exc}")
-            time.sleep(2)
+        for attempt in range(3):
+            try:
+                response = client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_instruction,
+                        response_mime_type="application/json",
+                        response_schema=schema,
+                        temperature=temperature,
+                    ),
+                )
+                if response and response.text:
+                    return json.loads(response.text)
+            except Exception as exc:
+                wait_sec = 15 * (attempt + 1)
+                logger.warning(f"Gemini '{model_name}' attempt {attempt+1} error: {exc} — waiting {wait_sec}s...")
+                time.sleep(wait_sec)
     raise RuntimeError("All Gemini model calls failed.")
 
 
@@ -901,7 +903,9 @@ def main() -> None:
 
             db.collection("weekly_matchups").document(game_id).set(matchup_doc, merge=True)
             processed_games += 1
-
+            logger.info(f"Processed {away_team} @ {home_team} ({processed_games}/{len(events)})") 
+            time.sleep(6.5)  # Stay strictly under free-tier 10-15 RPM limit
+            
             # Collect Tier 1 & Tier 2 legs for Final 5 Parlay construction
             for gt in synthesis.get("game_totals", []):
                 if int(gt.get("tier", 3)) <= 2:
