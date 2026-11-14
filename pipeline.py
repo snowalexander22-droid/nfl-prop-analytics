@@ -2,18 +2,17 @@
 """
 NFL Player Props & Game Totals Automated Analytics & Self-Learning Pipeline
 100% Free-Tier Stack:
-- ESPN Public JSON APIs (Schedule, Box Scores, Player Logs, Team Defense, Injuries)
+- ESPN Public JSON APIs (Schedule, Box Scores, Live Active Rosters, Injuries)
 - Open-Meteo API (Real-Time Stadium Weather Forecasts)
 - Polymarket Gamma API (Live Binary Market Implied Probabilities)
 - Public NFL RSS Feeds (ESPN, ProFootballTalk, CBS Sports, Yahoo Sports)
-- Google AI Studio Gemini API (gemini-3.8-flash with Structured JSON Output)
+- Google AI Studio Gemini API (gemini-3.8-flash batched structured JSON output)
 - Firebase Firestore (Real-time Database + Post-Game Autopsy Self-Learning Loop)
 """
 
 import os
 import re
 import json
-import math
 import time
 import logging
 from datetime import datetime, timezone
@@ -37,9 +36,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger("nfl_pipeline")
 
-# Primary and Fallback Gemini models on the Google AI Studio free tier
-PRIMARY_GEMINI_MODEL = "gemini-3.8-flash"
-FALLBACK_GEMINI_MODEL = "gemini-2.5-flash"
+# Active Free-Tier Gemini Models on Google AI Studio
+GEMINI_MODELS = [
+    "gemini-3.8-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash-lite",
+]
 
 # ESPN Base Endpoints
 ESPN_SCOREBOARD_URL = "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
@@ -95,6 +97,7 @@ NFL_STADIUMS: Dict[str, Dict[str, Any]] = {
     "TB":  {"stadium": "Raymond James Stadium", "lat": 27.9759, "lon": -82.5033, "dome": False},
     "TEN": {"stadium": "Nissan Stadium", "lat": 36.1665, "lon": -86.7713, "dome": False},
     "WSH": {"stadium": "Northwest Stadium", "lat": 38.9076, "lon": -76.8645, "dome": False},
+    "WAS": {"stadium": "Northwest Stadium", "lat": 38.9076, "lon": -76.8645, "dome": False},
 }
 
 
@@ -118,7 +121,7 @@ class GameTotalMarketSchema(BaseModel):
 
 class PlayerPropSchema(BaseModel):
     prop_id: str = Field(description="Unique slug ID, e.g., josh_allen_pass_yds_over")
-    player_name: str = Field(description="Full player name")
+    player_name: str = Field(description="Exact full player name matching active_rosters")
     team: str = Field(description="Player team abbreviation, e.g., BUF")
     opponent: str = Field(description="Opponent team abbreviation, e.g., KC")
     position: str = Field(description="Strictly 'QB', 'RB', 'WR', or 'TE'")
@@ -137,14 +140,19 @@ class PlayerPropSchema(BaseModel):
     intel_badges: List[str] = Field(description="2 to 3 actionable bullet notes explaining weather, defense, usage, or press quotes")
 
 
-class MatchupSynthesisSchema(BaseModel):
+class BatchMatchupItemSchema(BaseModel):
+    game_id: str = Field(description="Exact ESPN game_id provided in the input object")
     game_totals: List[GameTotalMarketSchema] = Field(
-        description="Strictly Full Game Total Over/Under, Away Team Total Over/Under, and Home Team Total Over/Under"
+        description="Strictly 3 items: FULL_GAME_TOTAL, AWAY_TEAM_TOTAL, and HOME_TEAM_TOTAL"
     )
     player_props: List[PlayerPropSchema] = Field(
-        description="6 to 10 high-value QB, RB, WR, TE player props for this matchup"
+        description="6 to 8 high-value QB, RB, WR, TE player props strictly from active_rosters"
     )
     matchup_headline: str = Field(description="1-sentence sharp analytical summary of the game script and weather")
+
+
+class BatchMatchupSynthesisSchema(BaseModel):
+    matchups: List[BatchMatchupItemSchema]
 
 
 class ParlayLegSchema(BaseModel):
@@ -164,7 +172,7 @@ class ParlayLegSchema(BaseModel):
 class SuggestedParlaySchema(BaseModel):
     parlay_rank: int = Field(description="1 to 5")
     parlay_title: str = Field(description="Sharp descriptive name for this parlay")
-    legs: List[ParlayLegSchema] = Field(description="3 to 7 legs with zero negative correlation")
+    legs: List[ParlayLegSchema] = Field(description="3 to 6 legs with zero negative correlation")
     combined_true_prob: float = Field(description="Product of leg true probabilities (0.01 to 0.90)")
     combined_polymarket_prob: float = Field(description="Product of leg Polymarket probabilities")
     net_ev_edge_pct: float = Field(description="Combined edge percentage")
@@ -188,7 +196,7 @@ class PostMortemAutopsySchema(BaseModel):
 
 
 # =====================================================================
-# INITIALIZATION HELPERS
+# INITIALIZATION & GEMINI HELPERS
 # =====================================================================
 
 def init_firestore() -> firestore.Client:
@@ -218,9 +226,9 @@ def call_gemini_structured(
     system_instruction: str,
     temperature: float = 0.2,
 ) -> Any:
-    """Calls gemini-3.8-flash with structured JSON output and automatic rate-limit backoff."""
-    for model_name in [PRIMARY_GEMINI_MODEL, FALLBACK_GEMINI_MODEL]:
-        for attempt in range(3):
+    """Calls free-tier Gemini models with structured JSON output and rate-limit backoff."""
+    for model_name in GEMINI_MODELS:
+        for attempt in range(2):
             try:
                 response = client.models.generate_content(
                     model=model_name,
@@ -235,8 +243,8 @@ def call_gemini_structured(
                 if response and response.text:
                     return json.loads(response.text)
             except Exception as exc:
-                wait_sec = 15 * (attempt + 1)
-                logger.warning(f"Gemini '{model_name}' attempt {attempt+1} error: {exc} — waiting {wait_sec}s...")
+                wait_sec = 12 * (attempt + 1)
+                logger.warning(f"Gemini '{model_name}' attempt {attempt + 1} error: {exc} — retrying in {wait_sec}s...")
                 time.sleep(wait_sec)
     raise RuntimeError("All Gemini model calls failed.")
 
@@ -266,9 +274,9 @@ def fetch_espn_game_summary(event_id: str) -> Dict[str, Any]:
         return {}
 
 
-def fetch_espn_injuries() -> Dict[str, List[str]]:
+def fetch_espn_injuries() -> Dict[str, List[Dict[str, str]]]:
     """Fetches official NFL injury reports grouped by team abbreviation."""
-    injuries_by_team: Dict[str, List[str]] = {}
+    injuries_by_team: Dict[str, List[Dict[str, str]]] = {}
     try:
         resp = requests.get(ESPN_INJURIES_URL, timeout=20)
         if resp.status_code != 200:
@@ -276,23 +284,105 @@ def fetch_espn_injuries() -> Dict[str, List[str]]:
         data = resp.json()
         for team_entry in data.get("injuries", []):
             team_info = team_entry.get("team", {})
-            abbr = team_info.get("abbreviation", "UNK")
+            abbr = team_info.get("abbreviation", "UNK").upper()
             team_list = []
-            for item in team_entry.get("injuries", [])[:8]:
-                athlete = item.get("athlete", {}).get("displayName", "Unknown")
+            for item in team_entry.get("injuries", []):
+                athlete = item.get("athlete", {}).get("displayName", "Unknown").strip()
                 pos = item.get("athlete", {}).get("position", {}).get("abbreviation", "")
-                status = item.get("status", "")
-                detail = item.get("details", {}).get("type", "")
-                team_list.append(f"{athlete} ({pos}) - {status} [{detail}]")
+                status = item.get("status", "").strip()
+                detail = item.get("details", {}).get("type", "").strip()
+                team_list.append({
+                    "player_name": athlete,
+                    "position": pos,
+                    "status": status,
+                    "detail": detail,
+                    "label": f"{athlete} ({pos}) - {status} [{detail}]",
+                })
             injuries_by_team[abbr] = team_list
     except Exception as exc:
         logger.warning(f"Injury fetch warning: {exc}")
     return injuries_by_team
 
 
+def fetch_team_active_skill_roster(
+    team_abbr: str,
+    team_injuries: List[Dict[str, str]],
+) -> List[Dict[str, Any]]:
+    """
+    Fetches the live 2026 active QB, RB, WR, TE roster from ESPN for a given team,
+    strictly filtering out Injured Reserve (IR), PUP, Suspended, Practice Squad,
+    and players ruled 'Out' or 'Doubtful' for this week.
+    """
+    espn_slug = "was" if team_abbr.upper() in ("WSH", "WAS") else team_abbr.lower()
+    url = f"{ESPN_TEAMS_URL}/{espn_slug}/roster"
+
+    ruled_out_names = {
+        inj["player_name"].lower()
+        for inj in team_injuries
+        if any(tag in inj.get("status", "").lower() for tag in ("out", "doubtful", "injured reserve", "ir", "pup", "suspended"))
+    }
+
+    active_players: List[Dict[str, Any]] = []
+    try:
+        resp = requests.get(url, timeout=15)
+        if resp.status_code != 200:
+            logger.warning(f"Roster endpoint HTTP {resp.status_code} for {team_abbr}")
+            return active_players
+
+        data = resp.json()
+        for group in data.get("athletes", []):
+            group_pos = str(group.get("position", "")).lower()
+            if group_pos not in ("offense", ""):
+                continue
+            for athlete in group.get("items", []):
+                pos = athlete.get("position", {}).get("abbreviation", "").upper()
+                if pos not in ("QB", "RB", "WR", "TE"):
+                    continue
+
+                full_name = athlete.get("displayName", "").strip()
+                if not full_name:
+                    continue
+
+                # Check ESPN roster status (Active vs Injured Reserve / Practice Squad / PUP)
+                status_obj = athlete.get("status", {})
+                status_type = str(status_obj.get("type", "")).lower()
+                status_name = str(status_obj.get("name", "")).lower()
+
+                if status_type != "active" or any(
+                    bad in status_name for bad in ("injured", "reserve", "ir", "pup", "nfi", "suspended", "practice")
+                ):
+                    continue
+
+                # Exclude players already ruled Out / Doubtful on weekly injury report
+                if full_name.lower() in ruled_out_names:
+                    continue
+
+                exp_years = int(athlete.get("experience", {}).get("years", 0) or 0)
+                active_players.append({
+                    "name": full_name,
+                    "position": pos,
+                    "team": team_abbr.upper(),
+                    "experience_years": exp_years,
+                })
+    except Exception as exc:
+        logger.warning(f"Roster fetch warning for {team_abbr}: {exc}")
+
+    # Prioritize core starters/veterans while keeping concise payload for Gemini
+    pos_caps = {"QB": 2, "RB": 4, "WR": 5, "TE": 3}
+    filtered_by_pos: List[Dict[str, Any]] = []
+    for p_code, cap in pos_caps.items():
+        subset = [p for p in active_players if p["position"] == p_code]
+        subset.sort(key=lambda x: x["experience_years"], reverse=True)
+        filtered_by_pos.extend(
+            [{"name": x["name"], "position": x["position"], "team": x["team"]} for x in subset[:cap]]
+        )
+
+    return filtered_by_pos
+
+
 def fetch_stadium_weather(home_team_abbr: str, kickoff_iso: str) -> Dict[str, Any]:
     """Fetches real-time stadium weather from Open-Meteo for the game's home stadium."""
-    meta = NFL_STADIUMS.get(home_team_abbr, {
+    meta = NFL_STADIUMS.get(home_team_abbr.upper(), {
         "stadium": f"{home_team_abbr} Stadium",
         "lat": 39.8283,
         "lon": -98.5795,
@@ -328,7 +418,6 @@ def fetch_stadium_weather(home_team_abbr: str, kickoff_iso: str) -> Dict[str, An
         gusts_mph = float(current.get("wind_gusts_10m", wind_mph))
         precip_prob = 0
 
-        # Attempt to match the kickoff hour in hourly forecast
         hourly = wdata.get("hourly", {})
         times = hourly.get("time", [])
         target_prefix = kickoff_iso[:13] if kickoff_iso else ""
@@ -420,7 +509,7 @@ def fetch_nfl_rss_intel() -> List[Dict[str, str]]:
                     articles.append({
                         "source": source_name,
                         "title": title,
-                        "summary": summary[:280],
+                        "summary": summary[:260],
                     })
         except Exception as exc:
             logger.warning(f"RSS error on {source_name}: {exc}")
@@ -432,12 +521,7 @@ def fetch_nfl_rss_intel() -> List[Dict[str, str]]:
 # =====================================================================
 
 def extract_final_box_score_stats(summary_data: Dict[str, Any]) -> Dict[str, Dict[str, float]]:
-    """
-    Parses ESPN final box score into a dictionary keyed by normalized player name:
-    {
-      'josh allen': {'Passing Yards': 280, 'Passing TDs': 2, 'Rushing Yards': 42, ...}
-    }
-    """
+    """Parses ESPN final box score into a dictionary keyed by normalized player name."""
     player_stats: Dict[str, Dict[str, float]] = {}
     boxscore = summary_data.get("boxscore", {})
     for team_block in boxscore.get("players", []):
@@ -477,7 +561,7 @@ def extract_final_box_score_stats(summary_data: Dict[str, Any]) -> Dict[str, Dic
 def evaluate_single_prop_outcome(
     direction: str,
     line: float,
-    actual_value: Optional[float]
+    actual_value: Optional[float],
 ) -> Optional[str]:
     """Returns 'WON' or 'LOST' given direction, line, and actual stat value."""
     if actual_value is None:
@@ -531,13 +615,11 @@ def grade_completed_games_and_run_autopsies(
             "box_stats": box_stats,
         }
 
-        # Grade stored matchup doc if it exists
         matchup_ref = db.collection("weekly_matchups").document(game_id)
         matchup_snap = matchup_ref.get()
         if matchup_snap.exists:
             mdata = matchup_snap.to_dict() or {}
             if mdata.get("graded") is not True:
-                # Grade game totals
                 graded_totals = []
                 for gt in mdata.get("game_totals", []):
                     mtype = gt.get("market_type", "")
@@ -552,7 +634,6 @@ def grade_completed_games_and_run_autopsies(
                     gt["status"] = res or "GRADED"
                     graded_totals.append(gt)
 
-                # Grade player props and update active streaks
                 graded_props = []
                 for pp in mdata.get("player_props", []):
                     p_key = pp.get("player_name", "").strip().lower()
@@ -563,7 +644,6 @@ def grade_completed_games_and_run_autopsies(
                     pp["status"] = res or "VOID"
                     graded_props.append(pp)
 
-                    # Update player_streaks in Firestore
                     if actual_val is not None:
                         streak_id = re.sub(r"[^a-z0-9_]", "_", f"{p_key}_{cat.lower()}")
                         s_ref = db.collection("player_streaks").document(streak_id)
@@ -595,7 +675,6 @@ def grade_completed_games_and_run_autopsies(
     if not final_games_map:
         return 0
 
-    # Grade AI Parlays & User Parlays and Run Gemini Post-Mortem Autopsy on LOST parlays
     for collection_name in ["ai_parlays", "user_parlays"]:
         pending_docs = db.collection(collection_name).where("status", "==", "PENDING").stream()
         for p_doc in pending_docs:
@@ -629,7 +708,6 @@ def grade_completed_games_and_run_autopsies(
                     else:
                         actual_val = fgame["away_score"]
                 else:
-                    # Match player name in box_stats
                     for p_name, stats_dict in fgame["box_stats"].items():
                         if p_name in sel.lower():
                             for s_cat, s_val in stats_dict.items():
@@ -655,7 +733,6 @@ def grade_completed_games_and_run_autopsies(
                     "graded_at": datetime.now(timezone.utc).isoformat(),
                 }
 
-                # Trigger AI Failure Autopsy if the parlay LOST
                 if final_parlay_status == "LOST" and lost_legs_details:
                     try:
                         autopsy_prompt = (
@@ -712,7 +789,6 @@ def load_recent_model_learnings(db: firestore.Client, limit: int = 10) -> List[D
     except Exception:
         pass
 
-    # Seed baseline quantitative rules if collection is empty on first run
     if not learnings:
         default_rules = [
             {
@@ -763,7 +839,7 @@ def main() -> None:
     events = scoreboard.get("events", [])
     logger.info(f"Loaded ESPN Scoreboard: Season {season_year}, Week {week_num} ({len(events)} games)")
 
-    # Step 1: Grade any completed games and generate self-learning failure autopsies
+    # Step 1: Grade completed games and generate self-learning failure autopsies
     autopsies_count = grade_completed_games_and_run_autopsies(db, gemini_client, events)
     logger.info(f"Post-game grading complete. New autopsies generated: {autopsies_count}")
 
@@ -784,16 +860,18 @@ def main() -> None:
 
     system_instruction = (
         "You are an elite Quantitative NFL Sportsbook Oddsmaker & Analytics Engine.\n"
-        "You synthesize 2026 season stats, rolling 17-game over streaks, opponent defensive rankings vs position, "
+        "You synthesize live 2026 active team rosters, rolling 17-game over streaks, opponent defensive rankings vs position, "
         "Open-Meteo stadium weather, Polymarket implied probabilities, and beat-writer RSS news.\n"
         "CRITICAL RULES:\n"
         "1. Game Props MUST be strictly limited to: FULL_GAME_TOTAL (Over/Under), AWAY_TEAM_TOTAL (Over/Under), and HOME_TEAM_TOTAL (Over/Under). Never output spread or moneyline props.\n"
-        "2. Player Props MUST cover key skill players (QB, RB, WR, TE) with accurate 2026 team rosters.\n"
+        "2. STRICT ROSTER & INJURY GROUNDING: You MUST ONLY generate player props for players explicitly listed inside each matchup's `active_rosters` list (using their exact `name` and `team`). NEVER invent players, use outdated 2024/2025 rosters, or include players on Injured Reserve (IR) or ruled Out.\n"
         "3. Apply these ACTIVE SELF-LEARNING MODEL ADJUSTMENTS from prior weeks' post-mortem autopsies:\n"
         f"{learnings_text}\n"
-        "4. Drop or downgrade to Tier 4 (Red) any player flagged with a cold streak or injury warning."
+        "4. Downgrade to Tier 4 (Red) any active player flagged with a cold streak or Questionable injury warning."
     )
 
+    # Step 4: Gather all game contexts & live 2026 active rosters first (fast, zero Gemini calls)
+    prepared_games: List[Dict[str, Any]] = []
     for ev in events:
         game_id = str(ev.get("id", ""))
         status_type = ev.get("status", {}).get("type", {}).get("name", "STATUS_SCHEDULED")
@@ -808,7 +886,7 @@ def main() -> None:
 
         for c in competitors:
             t_obj = c.get("team", {})
-            abbr = t_obj.get("abbreviation", "UNK")
+            abbr = t_obj.get("abbreviation", "UNK").upper()
             dname = t_obj.get("displayName", abbr)
             rec_list = c.get("records", [])
             rec_str = rec_list[0].get("summary", "0-0") if rec_list else "0-0"
@@ -818,135 +896,178 @@ def main() -> None:
             else:
                 away_team, away_name, away_record, away_score = abbr, dname, rec_str, scr
 
-        # Fetch stadium weather
         weather_info = fetch_stadium_weather(home_team, kickoff_iso)
-
-        # Extract ESPN baseline total & leaders from summary endpoint
         summary_data = fetch_espn_game_summary(game_id)
         pickcenter = summary_data.get("pickcenter", [])
-        espn_ou = 45.5
-        espn_spread = -2.5
-        if pickcenter:
-            espn_ou = float(pickcenter[0].get("overUnder", 45.5) or 45.5)
-            espn_spread = float(pickcenter[0].get("spread", -2.5) or -2.5)
+        espn_ou = float(pickcenter[0].get("overUnder", 45.5) or 45.5) if pickcenter else 45.5
+        espn_spread = float(pickcenter[0].get("spread", -2.5) or -2.5) if pickcenter else -2.5
 
-        # Filter relevant Polymarket markets & RSS news for this matchup
+        home_inj_objs = injuries_by_team.get(home_team, [])
+        away_inj_objs = injuries_by_team.get(away_team, [])
+
+        # Fetch verified 2026 active skill rosters (excluding IR, PUP, Out, Doubtful)
+        home_active_roster = fetch_team_active_skill_roster(home_team, home_inj_objs)
+        away_active_roster = fetch_team_active_skill_roster(away_team, away_inj_objs)
+
         relevant_poly = [
             m for m in polymarket_markets
             if home_team.lower() in m["event_title"].lower()
             or away_team.lower() in m["event_title"].lower()
             or home_name.split()[-1].lower() in m["event_title"].lower()
             or away_name.split()[-1].lower() in m["event_title"].lower()
-        ][:10]
+        ][:6]
 
         relevant_rss = [
-            a for a in rss_articles
+            a["title"] for a in rss_articles
             if home_name.split()[-1].lower() in (a["title"] + " " + a["summary"]).lower()
             or away_name.split()[-1].lower() in (a["title"] + " " + a["summary"]).lower()
-        ][:8]
+        ][:4]
 
-        home_injuries = injuries_by_team.get(home_team, [])
-        away_injuries = injuries_by_team.get(away_team, [])
+        team_streaks = [s for s in streaks_map.values() if s.get("team") in (home_team, away_team)]
 
-        # Filter relevant tracked streaks for these two teams
-        team_streaks = [
-            s for s in streaks_map.values()
-            if s.get("team") in (home_team, away_team)
-        ]
+        prepared_games.append({
+            "game_id": game_id,
+            "status": status_type,
+            "kickoff_iso": kickoff_iso,
+            "away_team": away_team,
+            "away_name": away_name,
+            "away_record": away_record,
+            "away_score": away_score,
+            "home_team": home_team,
+            "home_name": home_name,
+            "home_record": home_record,
+            "home_score": home_score,
+            "baseline_ou": espn_ou,
+            "home_spread": espn_spread,
+            "weather": weather_info,
+            "away_injuries": [x["label"] for x in away_inj_objs[:6]],
+            "home_injuries": [x["label"] for x in home_inj_objs[:6]],
+            "active_rosters": {
+                "away": away_active_roster,
+                "home": home_active_roster,
+            },
+            "rss_headlines": relevant_rss,
+            "team_streaks": team_streaks,
+            "polymarket_context": relevant_poly,
+        })
 
-        prompt = (
-            f"Analyze NFL Season {season_year} Week {week_num} Matchup: {away_name} ({away_team}, {away_record}) @ {home_name} ({home_team}, {home_record})\n"
-            f"Kickoff: {kickoff_iso} | Baseline O/U Line: {espn_ou} | Home Spread: {espn_spread}\n"
-            f"Stadium Weather (Open-Meteo): {weather_info['summary']}\n"
-            f"{away_team} Injury Report: {json.dumps(away_injuries)}\n"
-            f"{home_team} Injury Report: {json.dumps(home_injuries)}\n"
-            f"Tracked Player Over Streaks & Cold Flags: {json.dumps(team_streaks)}\n"
-            f"Live Polymarket Odds Context: {json.dumps(relevant_poly)}\n"
-            f"Recent Beat & RSS News: {json.dumps(relevant_rss)}\n\n"
-            "Generate:\n"
-            "1. Exactly 3 `game_totals` entries: FULL_GAME_TOTAL (best Over or Under), AWAY_TEAM_TOTAL (best Over or Under), and HOME_TEAM_TOTAL (best Over or Under).\n"
-            "2. 8 `player_props` entries covering key QB, RB, WR, and TE skill players from both teams, with 2026 hit rate, rolling 17-game hit rate, active over streak, opponent defense rank vs position (1-32), true probability, Polymarket probability, +EV edge %, 4-tier color rating, and 2-3 specific AI Intel Badges."
+    # Step 5: Process all games in 2 fast batches (2 Gemini API calls total for the entire slate!)
+    batch_size = 8
+    for i in range(0, len(prepared_games), batch_size):
+        chunk = prepared_games[i : i + batch_size]
+        logger.info(f"Synthesizing batch {i // batch_size + 1} ({len(chunk)} games)...")
+        batch_prompt = (
+            f"Analyze these {len(chunk)} NFL Season {season_year} Week {week_num} matchups.\n"
+            "For EACH matchup (matching its exact `game_id`), generate:\n"
+            "1. Exactly 3 `game_totals` entries: FULL_GAME_TOTAL, AWAY_TEAM_TOTAL, and HOME_TEAM_TOTAL (Over or Under).\n"
+            "2. 6 to 8 `player_props` entries covering key QB, RB, WR, and TE skill players STRICTLY chosen from each game's `active_rosters` list "
+            "(matching exact `name` and `team`), with 2026 hit rate, rolling 17-game hit rate, active over streak, opponent defense rank vs position (1-32), "
+            "true probability, Polymarket probability, +EV edge %, 4-tier color rating, and 2-3 specific AI Intel Badges.\n\n"
+            f"Matchup Data:\n{json.dumps(chunk)}"
         )
 
         try:
-            synthesis = call_gemini_structured(
+            batch_res = call_gemini_structured(
                 client=gemini_client,
-                prompt=prompt,
-                schema=MatchupSynthesisSchema,
+                prompt=batch_prompt,
+                schema=BatchMatchupSynthesisSchema,
                 system_instruction=system_instruction,
             )
+            synthesized_map = {str(m["game_id"]): m for m in batch_res.get("matchups", [])}
 
-            matchup_doc = {
-                "game_id": game_id,
-                "season": season_year,
-                "week": week_num,
-                "status": status_type,
-                "kickoff_iso": kickoff_iso,
-                "away_team": away_team,
-                "away_name": away_name,
-                "away_record": away_record,
-                "away_score": away_score,
-                "home_team": home_team,
-                "home_name": home_name,
-                "home_record": home_record,
-                "home_score": home_score,
-                "baseline_ou": espn_ou,
-                "weather": weather_info,
-                "away_injuries": away_injuries[:5],
-                "home_injuries": home_injuries[:5],
-                "rss_headlines": [a["title"] for a in relevant_rss[:4]],
-                "matchup_headline": synthesis.get("matchup_headline", ""),
-                "game_totals": synthesis.get("game_totals", []),
-                "player_props": synthesis.get("player_props", []),
-                "updated_at": datetime.now(timezone.utc).isoformat(),
-            }
+            for g in chunk:
+                gid = g["game_id"]
+                syn = synthesized_map.get(gid)
+                if not syn:
+                    logger.warning(f"No synthesized block returned for game {gid}")
+                    continue
 
-            db.collection("weekly_matchups").document(game_id).set(matchup_doc, merge=True)
-            processed_games += 1
-            logger.info(f"Processed {away_team} @ {home_team} ({processed_games}/{len(events)})") 
-            time.sleep(6.5)  # Stay strictly under free-tier 10-15 RPM limit
-            
-            # Collect Tier 1 & Tier 2 legs for Final 5 Parlay construction
-            for gt in synthesis.get("game_totals", []):
-                if int(gt.get("tier", 3)) <= 2:
-                    all_candidate_legs.append({
-                        "leg_id": gt.get("market_id"),
-                        "game_id": game_id,
-                        "matchup_label": f"{away_team} @ {home_team}",
-                        "leg_type": gt.get("market_type"),
-                        "selection_label": f"{gt.get('target_team')} {gt.get('direction')} {gt.get('line')} ({gt.get('market_type').replace('_', ' ')})",
-                        "team": home_team if "HOME" in gt.get("market_type", "") else away_team,
-                        "true_prob": gt.get("true_prob"),
-                        "polymarket_prob": gt.get("polymarket_prob"),
-                        "ev_edge_pct": gt.get("ev_edge_pct"),
-                        "tier": gt.get("tier"),
-                        "intel": gt.get("intel_badges", []),
-                    })
+                # Hard Python guardrail: enforce live 2026 active roster & exclude Out/Doubtful/IR players
+                valid_active_lookup = {
+                    (p["name"].strip().lower(), p["team"].strip().upper())
+                    for p in (g["active_rosters"]["away"] + g["active_rosters"]["home"])
+                }
+                valid_names_only = {pair[0] for pair in valid_active_lookup}
 
-            for pp in synthesis.get("player_props", []):
-                if int(pp.get("tier", 3)) <= 2:
-                    all_candidate_legs.append({
-                        "leg_id": pp.get("prop_id"),
-                        "game_id": game_id,
-                        "matchup_label": f"{away_team} @ {home_team}",
-                        "leg_type": "PLAYER_PROP",
-                        "selection_label": f"{pp.get('player_name')} ({pp.get('team')}) {pp.get('direction')} {pp.get('line')} {pp.get('stat_category')}",
-                        "team": pp.get("team"),
-                        "true_prob": pp.get("true_prob"),
-                        "polymarket_prob": pp.get("polymarket_prob"),
-                        "ev_edge_pct": pp.get("ev_edge_pct"),
-                        "tier": pp.get("tier"),
-                        "intel": pp.get("intel_badges", []),
-                    })
+                verified_props = []
+                for pp in syn.get("player_props", []):
+                    p_name_norm = pp.get("player_name", "").strip().lower()
+                    p_team_norm = pp.get("team", "").strip().upper()
+                    if (p_name_norm, p_team_norm) in valid_active_lookup or p_name_norm in valid_names_only:
+                        verified_props.append(pp)
+                    else:
+                        logger.info(f"Filtered out non-active/IR/wrong-team player prop: {pp.get('player_name')} ({p_team_norm})")
 
+                matchup_doc = {
+                    "game_id": gid,
+                    "season": season_year,
+                    "week": week_num,
+                    "status": g["status"],
+                    "kickoff_iso": g["kickoff_iso"],
+                    "away_team": g["away_team"],
+                    "away_name": g["away_name"],
+                    "away_record": g["away_record"],
+                    "away_score": g["away_score"],
+                    "home_team": g["home_team"],
+                    "home_name": g["home_name"],
+                    "home_record": g["home_record"],
+                    "home_score": g["home_score"],
+                    "baseline_ou": g["baseline_ou"],
+                    "weather": g["weather"],
+                    "away_injuries": g["away_injuries"],
+                    "home_injuries": g["home_injuries"],
+                    "rss_headlines": g["rss_headlines"],
+                    "matchup_headline": syn.get("matchup_headline", ""),
+                    "game_totals": syn.get("game_totals", []),
+                    "player_props": verified_props,
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                }
+
+                db.collection("weekly_matchups").document(gid).set(matchup_doc, merge=True)
+                processed_games += 1
+
+                for gt in syn.get("game_totals", []):
+                    if int(gt.get("tier", 3)) <= 2:
+                        all_candidate_legs.append({
+                            "leg_id": gt.get("market_id"),
+                            "game_id": gid,
+                            "matchup_label": f"{g['away_team']} @ {g['home_team']}",
+                            "leg_type": gt.get("market_type"),
+                            "selection_label": f"{gt.get('target_team')} {gt.get('direction')} {gt.get('line')} ({gt.get('market_type').replace('_', ' ')})",
+                            "team": g["home_team"] if "HOME" in gt.get("market_type", "") else g["away_team"],
+                            "true_prob": gt.get("true_prob"),
+                            "polymarket_prob": gt.get("polymarket_prob"),
+                            "ev_edge_pct": gt.get("ev_edge_pct"),
+                            "tier": gt.get("tier"),
+                            "intel": gt.get("intel_badges", []),
+                        })
+
+                for pp in verified_props:
+                    if int(pp.get("tier", 3)) <= 2:
+                        all_candidate_legs.append({
+                            "leg_id": pp.get("prop_id"),
+                            "game_id": gid,
+                            "matchup_label": f"{g['away_team']} @ {g['home_team']}",
+                            "leg_type": "PLAYER_PROP",
+                            "selection_label": f"{pp.get('player_name')} ({pp.get('team')}) {pp.get('direction')} {pp.get('line')} {pp.get('stat_category')}",
+                            "team": pp.get("team"),
+                            "true_prob": pp.get("true_prob"),
+                            "polymarket_prob": pp.get("polymarket_prob"),
+                            "ev_edge_pct": pp.get("ev_edge_pct"),
+                            "tier": pp.get("tier"),
+                            "intel": pp.get("intel_badges", []),
+                        })
+
+            if i + batch_size < len(prepared_games):
+                time.sleep(5)
         except Exception as exc:
-            logger.error(f"Failed to synthesize matchup {away_team} @ {home_team}: {exc}")
+            logger.error(f"Batch {i // batch_size + 1} failed: {exc}")
 
-    # Step 4: Construct the Auto-Generated "Final 5" Non-Crossover Parlays
+    # Step 6: Construct the Auto-Generated "Final 5" Non-Crossover Parlays
     if len(all_candidate_legs) >= 10:
-        logger.info(f"Building Final 5 Non-Crossover Parlays from {len(all_candidate_legs)} elite legs...")
+        logger.info(f"Building Final 5 Non-Crossover Parlays from {len(all_candidate_legs)} verified elite legs...")
         parlay_prompt = (
-            f"Candidate High-Confidence Legs for NFL Week {week_num}:\n"
+            f"Candidate Verified High-Confidence Legs for NFL Week {week_num}:\n"
             f"{json.dumps(all_candidate_legs)}\n\n"
             "Construct strictly 5 optimal parlays (3 to 6 legs each) ranked 1 to 5 by combined hit probability and +EV edge.\n"
             "STRICT RULES:\n"
@@ -978,17 +1099,17 @@ def main() -> None:
         except Exception as exc:
             logger.error(f"Failed to build Final 5 Parlays: {exc}")
 
-    # Step 5: Update System Meta Status
+    # Step 7: Update System Meta Status
     db.collection("system_meta").document("pipeline_status").set({
         "last_run_utc": datetime.now(timezone.utc).isoformat(),
         "season": season_year,
         "current_week": week_num,
         "games_processed": processed_games,
         "active_learnings_count": len(learnings),
-        "model_used": PRIMARY_GEMINI_MODEL,
+        "model_used": GEMINI_MODELS[0],
     }, merge=True)
 
-    logger.info("Pipeline execution finished successfully.")
+    logger.info(f"Pipeline execution finished successfully! Processed {processed_games}/{len(events)} games.")
 
 
 if __name__ == "__main__":
