@@ -1,0 +1,45 @@
+name: NFL Props & Totals AI Pipeline
+
+on:
+  schedule:
+    # Runs every 4 hours every day to capture line moves, weather shifts, RSS news, and live/final grading
+    - cron: '0 */4 * * *'
+    # Dedicated Tuesday morning post-game autopsy & grading sweep (10:00 UTC / 5:00 AM EST)
+    - cron: '0 10 * * 2'
+  workflow_dispatch:
+    inputs:
+      force_week:
+        description: 'Optional: Override NFL Week number (leave blank for automatic detection)'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  run-analytics-pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set Up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Execute NFL Data, Grading & Gemini AI Pipeline
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          FORCE_WEEK: ${{ github.event.inputs.force_week }}
+        run: |
+          python pipeline.py
