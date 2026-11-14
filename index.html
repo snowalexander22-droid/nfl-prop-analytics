@@ -1,0 +1,1721 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QUANTGRID // 2026 NFL Props & Totals AI Terminal</title>
+
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            obsidian: '#0B0E14',
+            slateCard: '#131822',
+            slateElevated: '#1A2130',
+            borderCrisp: '#242E42',
+            emeraldGlow: '#10B981',
+            amberGlow: '#F59E0B',
+            orangeGlow: '#F97316',
+            crimsonGlow: '#EF4444',
+            polyBlue: '#3B82F6'
+          },
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace']
+          }
+        }
+      }
+    };
+  </script>
+
+  <style>
+    body {
+      background-color: #0B0E14;
+      color: #F1F5F9;
+      font-family: 'Inter', sans-serif;
+    }
+    .tier-1-pill {
+      background: rgba(16, 185, 129, 0.14);
+      border: 1px solid rgba(16, 185, 129, 0.55);
+      color: #34D399;
+      box-shadow: 0 0 12px rgba(16, 185, 129, 0.18);
+    }
+    .tier-2-pill {
+      background: rgba(245, 158, 11, 0.14);
+      border: 1px solid rgba(245, 158, 11, 0.55);
+      color: #FBBF24;
+      box-shadow: 0 0 12px rgba(245, 158, 11, 0.15);
+    }
+    .tier-3-pill {
+      background: rgba(249, 115, 22, 0.14);
+      border: 1px solid rgba(249, 115, 22, 0.55);
+      color: #FB923C;
+    }
+    .tier-4-pill {
+      background: rgba(239, 68, 68, 0.14);
+      border: 1px solid rgba(239, 68, 68, 0.55);
+      color: #F87171;
+    }
+    .prop-btn-selected {
+      border-color: #10B981 !important;
+      background: rgba(16, 185, 129, 0.16) !important;
+      box-shadow: 0 0 16px rgba(16, 185, 129, 0.25);
+    }
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #0B0E14;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #242E42;
+      border-radius: 3px;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col selection:bg-emerald-500 selection:text-black">
+
+  <!-- TOP HEADER & STATUS BAR -->
+  <header class="sticky top-0 z-40 bg-obsidian/95 backdrop-blur-md border-b border-borderCrisp">
+    <div class="max-w-[1600px] mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-lg bg-emerald-500/15 border border-emerald-500/40 flex items-center justify-center font-mono font-bold text-emerald-400 text-lg shadow-inner">
+          QG
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="text-lg font-extrabold tracking-tight text-white">QUANTGRID NFL</h1>
+            <span class="text-[11px] font-mono uppercase px-2 py-0.5 rounded bg-polyBlue/20 text-blue-400 border border-blue-500/30">
+              Polymarket + Gemini 3.8 Flash
+            </span>
+          </div>
+          <p id="pipelineStatusText" class="text-xs text-slate-400 font-mono">
+            Syncing Firestore telemetry...
+          </p>
+        </div>
+      </div>
+
+      <!-- NAVIGATION TABS -->
+      <nav class="flex items-center gap-1 bg-slateCard p-1 rounded-xl border border-borderCrisp">
+        <button onclick="switchTab('board')" id="tabBtn-board" class="px-4 py-2 rounded-lg text-xs font-semibold transition-all bg-emerald-500 text-slate-950 shadow">
+          Matchup Board & Props
+        </button>
+        <button onclick="switchTab('final5')" id="tabBtn-final5" class="px-4 py-2 rounded-lg text-xs font-semibold transition-all text-slate-300 hover:text-white">
+          AI "Final 5" Parlays
+        </button>
+        <button onclick="switchTab('autopsy')" id="tabBtn-autopsy" class="px-4 py-2 rounded-lg text-xs font-semibold transition-all text-slate-300 hover:text-white">
+          Graded History & AI Autopsy Lab
+        </button>
+      </nav>
+
+      <!-- CONNECTION & DEMO CONTROLS -->
+      <div class="flex items-center gap-2">
+        <span id="dbConnectionBadge" class="px-2.5 py-1 rounded-full text-[11px] font-mono bg-amber-500/15 text-amber-300 border border-amber-500/30">
+          Demo Mode Active
+        </span>
+        <button onclick="openConfigModal()" class="px-3 py-1.5 rounded-lg text-xs font-mono bg-slateCard hover:bg-slateElevated border border-borderCrisp text-slate-200 transition">
+          DB Config
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN WORKSPACE -->
+  <div class="max-w-[1600px] w-full mx-auto flex-1 grid grid-cols-1 lg:grid-cols-12 gap-6 px-4 py-6">
+
+    <!-- LEFT / CENTER MAIN VIEWPORT (8 COLUMNS ON DESKTOP) -->
+    <main class="lg:col-span-8 xl:col-span-9 space-y-6">
+
+      <!-- TAB 1: MATCHUP BOARD (GROUPED BY WEEKLY GAME) -->
+      <section id="view-board" class="space-y-5">
+        <!-- Global Filter Bar -->
+        <div class="bg-slateCard border border-borderCrisp rounded-xl p-4 flex flex-wrap items-center justify-between gap-3">
+          <div class="flex flex-wrap items-center gap-2">
+            <input
+              id="searchFilterInput"
+              oninput="renderMatchupBoard()"
+              type="text"
+              placeholder="Search player, team, or badge..."
+              class="bg-obsidian border border-borderCrisp rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500 w-56"
+            />
+            <select id="tierFilterSelect" onchange="renderMatchupBoard()" class="bg-obsidian border border-borderCrisp rounded-lg px-3 py-1.5 text-xs text-slate-200">
+              <option value="ALL">All Tiers (1-4)</option>
+              <option value="1">Tier 1 (Green - Elite Edge)</option>
+              <option value="2">Tier 1 & 2 (Green + Yellow)</option>
+              <option value="3">Tier 3 (Orange - Neutral)</option>
+              <option value="4">Tier 4 (Red - High Risk)</option>
+            </select>
+            <select id="posFilterSelect" onchange="renderMatchupBoard()" class="bg-obsidian border border-borderCrisp rounded-lg px-3 py-1.5 text-xs text-slate-200">
+              <option value="ALL">All Positions</option>
+              <option value="QB">QB</option>
+              <option value="RB">RB</option>
+              <option value="WR">WR</option>
+              <option value="TE">TE</option>
+            </select>
+            <select id="dirFilterSelect" onchange="renderMatchupBoard()" class="bg-obsidian border border-borderCrisp rounded-lg px-3 py-1.5 text-xs text-slate-200">
+              <option value="ALL">Overs & Unders</option>
+              <option value="OVER">Overs Only</option>
+              <option value="UNDER">Unders Only</option>
+            </select>
+          </div>
+          <div class="flex items-center gap-3 text-xs font-mono text-slate-400">
+            <label class="flex items-center gap-1.5 cursor-pointer">
+              <input id="positiveEvOnlyToggle" type="checkbox" onchange="renderMatchupBoard()" class="accent-emerald-500 rounded" />
+              <span>+EV Edge Only</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Matchup Cards Container -->
+        <div id="matchupsContainer" class="space-y-5"></div>
+      </section>
+
+      <!-- TAB 2: AI "FINAL 5" SUGGESTED PARLAYS -->
+      <section id="view-final5" class="hidden space-y-5">
+        <div class="bg-slateCard border border-borderCrisp rounded-xl p-5 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h2 class="text-base font-bold text-white flex items-center gap-2">
+              AI-Synthesized "Final 5" Non-Crossover Parlays
+              <span class="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                Zero Leg Overlap
+              </span>
+            </h2>
+            <p class="text-xs text-slate-400 mt-1">
+              Constructed every 4 hours by <span class="font-mono text-slate-200">gemini-3.8-flash</span> from Tier 1 & Tier 2 edges across all games. No leg repeats across any of the 5 slips.
+            </p>
+          </div>
+        </div>
+        <div id="final5Container" class="grid grid-cols-1 gap-4"></div>
+      </section>
+
+      <!-- TAB 3: GRADED HISTORY & AI AUTOPSY LAB -->
+      <section id="view-autopsy" class="hidden space-y-6">
+        <!-- KPI Summary Row -->
+        <div id="historyKpiRow" class="grid grid-cols-2 sm:grid-cols-4 gap-4"></div>
+
+        <!-- Active AI Self-Learning Rules Feed -->
+        <div class="bg-slateCard border border-borderCrisp rounded-xl p-5 space-y-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <h3 class="text-sm font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                Active AI Self-Learning Rules (Injected into Prompt)
+              </h3>
+              <p class="text-xs text-slate-400 mt-0.5">
+                Automatically extracted by Gemini Post-Mortem Autopsies after every missed high-confidence leg or parlay.
+              </p>
+            </div>
+          </div>
+          <div id="learningsFeedContainer" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
+        </div>
+
+        <!-- Graded & Saved Parlays List -->
+        <div class="bg-slateCard border border-borderCrisp rounded-xl p-5 space-y-4">
+          <h3 class="text-sm font-bold text-white uppercase tracking-wider font-mono">
+            Tracked Parlay History & Post-Mortem Failure Autopsies
+          </h3>
+          <div id="gradedParlaysContainer" class="space-y-3"></div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- RIGHT SIDEBAR: STICKY INTERACTIVE PARLAY SLIP (4 COLUMNS ON DESKTOP) -->
+    <aside class="lg:col-span-4 xl:col-span-3">
+      <div class="sticky top-20 bg-slateCard border border-borderCrisp rounded-2xl p-5 space-y-4 shadow-2xl">
+        <div class="flex items-center justify-between border-b border-borderCrisp pb-3">
+          <div class="flex items-center gap-2">
+            <h2 class="text-sm font-bold uppercase tracking-wider font-mono text-white">Interactive Parlay Slip</h2>
+            <span id="slipCountBadge" class="px-2 py-0.5 text-xs font-mono font-bold rounded-full bg-emerald-500 text-slate-950">
+              0
+            </span>
+          </div>
+          <button onclick="clearParlaySlip()" class="text-xs text-slate-400 hover:text-rose-400 font-mono transition">
+            Clear All
+          </button>
+        </div>
+
+        <!-- Correlation / Combo Rule Warnings -->
+        <div id="slipCorrelationWarnings" class="hidden space-y-2"></div>
+
+        <!-- Selected Legs List -->
+        <div id="slipLegsList" class="space-y-2.5 max-h-[340px] overflow-y-auto pr-1"></div>
+
+        <!-- Real-Time Probability & +EV Readout -->
+        <div class="bg-obsidian border border-borderCrisp rounded-xl p-3.5 space-y-2 font-mono text-xs">
+          <div class="flex justify-between text-slate-400">
+            <span>Combined True Win Prob:</span>
+            <span id="slipTrueProb" class="text-white font-bold">0.0%</span>
+          </div>
+          <div class="flex justify-between text-slate-400">
+            <span>Polymarket Implied Prob:</span>
+            <span id="slipPolyProb" class="text-blue-400 font-semibold">0.0%</span>
+          </div>
+          <div class="flex justify-between text-slate-400">
+            <span>Net Parlay +EV Edge:</span>
+            <span id="slipEvEdge" class="text-emerald-400 font-bold">+0.0%</span>
+          </div>
+          <div class="flex justify-between text-slate-400 pt-1 border-t border-borderCrisp">
+            <span>Est. Fair Multiplier / Payout:</span>
+            <span id="slipEstPayout" class="text-amber-300 font-bold">1.00x ($0.00)</span>
+          </div>
+        </div>
+
+        <!-- Custom Parlay Name & Stake Inputs -->
+        <div class="space-y-2.5 pt-1">
+          <div>
+            <label class="block text-[11px] font-mono text-slate-400 mb-1">Custom Parlay Label</label>
+            <input
+              id="customParlayNameInput"
+              type="text"
+              placeholder="e.g., Week 11 Sunday Early Window"
+              class="w-full bg-obsidian border border-borderCrisp rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+            />
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-[11px] font-mono text-slate-400 mb-1">Stake ($)</label>
+              <input
+                id="customStakeInput"
+                type="number"
+                value="25"
+                min="1"
+                oninput="updateParlayMath()"
+                class="w-full bg-obsidian border border-borderCrisp rounded-lg px-3 py-2 text-xs font-mono text-white focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+            <div class="flex items-end">
+              <button
+                onclick="saveCurrentParlayToTracker()"
+                id="saveParlayBtn"
+                class="w-full py-2 px-3 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs transition shadow-lg shadow-emerald-500/10"
+              >
+                Save Parlay to Tracker
+              </button>
+            </div>
+          </div>
+          <p id="saveSlipFeedback" class="text-[11px] font-mono text-center text-emerald-400 hidden"></p>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <!-- FIREBASE CONFIG MODAL -->
+  <div id="configModal" class="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm hidden items-center justify-center p-4">
+    <div class="bg-slateCard border border-borderCrisp rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
+      <div class="flex items-center justify-between">
+        <h3 class="text-base font-bold text-white font-mono">Firebase Firestore Configuration</h3>
+        <button onclick="closeConfigModal()" class="text-slate-400 hover:text-white text-sm font-mono">ESC</button>
+      </div>
+      <p class="text-xs text-slate-400 leading-relaxed">
+        Paste your Firebase Web App <code class="text-emerald-400">firebaseConfig</code> JSON object below to sync live with your Firestore database. Your config is stored locally in your browser's <code class="text-slate-300">localStorage</code>.
+      </p>
+      <textarea
+        id="firebaseConfigTextarea"
+        rows="7"
+        placeholder='{"apiKey": "AIza...", "authDomain": "...", "projectId": "...", "appId": "..."}'
+        class="w-full bg-obsidian border border-borderCrisp rounded-xl p-3 text-xs font-mono text-emerald-300 focus:outline-none focus:border-emerald-500"
+      ></textarea>
+      <div class="flex items-center justify-between gap-3 pt-2">
+        <button onclick="loadDemoDataset()" class="px-4 py-2 rounded-lg text-xs font-mono border border-borderCrisp text-slate-300 hover:bg-slateElevated">
+          Use Built-In Live Demo Data
+        </button>
+        <div class="flex items-center gap-2">
+          <button onclick="closeConfigModal()" class="px-4 py-2 rounded-lg text-xs text-slate-400 hover:text-white">
+            Cancel
+          </button>
+          <button onclick="saveFirebaseConfigFromModal()" class="px-4 py-2 rounded-lg text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950">
+            Save & Connect
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- APPLICATION & FIREBASE MODULAR SDK LOGIC -->
+  <script type="module">
+    import { initializeApp, getApps } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+    import {
+      getFirestore,
+      collection,
+      doc,
+      onSnapshot,
+      addDoc,
+      getDocs,
+      query,
+      orderBy
+    } from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+    // Optional: Hardcode your firebaseConfig right here so you never even need the modal
+    const DEFAULT_FIREBASE_CONFIG = null;
+
+    // Global State
+    let db = null;
+    let isLiveFirestore = false;
+    let matchupsData = [];
+    let aiParlaysData = [];
+    let userParlaysData = [];
+    let modelLearningsData = [];
+    let activeParlaySlip = [];
+
+    // =====================================================================
+    // BUILT-IN REALISTIC 2026 NFL DEMO DATASET (INSTANT PREVIEW FALLBACK)
+    // =====================================================================
+    const DEMO_MATCHUPS = [
+      {
+        game_id: "401671801",
+        season: 2026,
+        week: 10,
+        status: "STATUS_SCHEDULED",
+        kickoff_iso: "2026-11-15T18:00:00Z",
+        away_team: "KC",
+        away_name: "Kansas City Chiefs",
+        away_record: "7-2",
+        away_score: 0,
+        home_team: "BUF",
+        home_name: "Buffalo Bills",
+        home_record: "7-2",
+        home_score: 0,
+        baseline_ou: 47.5,
+        weather: {
+          stadium: "Highmark Stadium",
+          is_dome: false,
+          temp_f: 41.0,
+          wind_mph: 19.5,
+          precip_prob: 25,
+          summary: "Outdoor (Highmark Stadium) | 41°F | Wind 19.5 mph (Gusts 26 mph) | Precip 25%"
+        },
+        away_injuries: ["Isiah Pacheco (RB) - Questionable [Ankle]"],
+        home_injuries: ["Dalton Kincaid (TE) - Probable [Knee]"],
+        rss_headlines: [
+          "McDermott notes Buffalo prepared for swirling 20 mph Orchard Park crosswinds Sunday.",
+          "Reid confirms Travis Kelce snap count remains uncapped in high-leverage AFC showdown."
+        ],
+        matchup_headline: "19.5 mph Orchard Park crosswinds trigger our learned outdoor wind penalty on deep passing; high-percentage short targets & QB rushing legs hold elite +EV edge.",
+        game_totals: [
+          {
+            market_id: "KC_BUF_FULL_UNDER",
+            market_type: "FULL_GAME_TOTAL",
+            target_team: "KC @ BUF",
+            direction: "UNDER",
+            line: 47.5,
+            true_prob: 0.63,
+            polymarket_prob: 0.54,
+            ev_edge_pct: 9.0,
+            tier: 1,
+            tier_label: "Tier 1 (Green)",
+            intel_badges: ["19.5 mph crosswind triggers -6.5% scoring rule", "KC Defense #4 in points allowed (18.4 PPG)", "Red-zone clock-bleed script projected"]
+          },
+          {
+            market_id: "KC_AWAY_TEAM_UNDER",
+            market_type: "AWAY_TEAM_TOTAL",
+            target_team: "KC",
+            direction: "UNDER",
+            line: 23.5,
+            true_prob: 0.59,
+            polymarket_prob: 0.52,
+            ev_edge_pct: 7.0,
+            tier: 2,
+            tier_label: "Tier 2 (Yellow)",
+            intel_badges: ["BUF Two-High shell limits explosive passes", "KC averaging 6.8 min per scoring drive"]
+          },
+          {
+            market_id: "BUF_HOME_TEAM_OVER",
+            market_type: "HOME_TEAM_TOTAL",
+            target_team: "BUF",
+            direction: "OVER",
+            line: 23.5,
+            true_prob: 0.57,
+            polymarket_prob: 0.53,
+            ev_edge_pct: 4.0,
+            tier: 2,
+            tier_label: "Tier 2 (Yellow)",
+            intel_badges: ["BUF red-zone TD conversion 68.4% at home", "Josh Allen goal-line rush equity"]
+          }
+        ],
+        player_props: [
+          {
+            prop_id: "josh_allen_rush_yds_over",
+            player_name: "Josh Allen",
+            team: "BUF",
+            opponent: "KC",
+            position: "QB",
+            stat_category: "Rushing Yards",
+            direction: "OVER",
+            line: 38.5,
+            season_2026_hit_rate: 77.8,
+            rolling_17g_hit_rate: 76.5,
+            active_over_streak: 5,
+            opp_def_rank_vs_pos: 26,
+            true_prob: 0.68,
+            polymarket_prob: 0.57,
+            ev_edge_pct: 11.0,
+            tier: 1,
+            tier_label: "Tier 1 (Green)",
+            intel_badges: ["5-game active Over streak vs man coverage", "KC ranks 26th containing QB scrambles", "44+ rush yds in 4 straight vs KC"]
+          },
+          {
+            prop_id: "travis_kelce_rec_over",
+            player_name: "Travis Kelce",
+            team: "KC",
+            opponent: "BUF",
+            position: "TE",
+            stat_category: "Receptions",
+            direction: "OVER",
+            line: 5.5,
+            season_2026_hit_rate: 66.7,
+            rolling_17g_hit_rate: 70.6,
+            active_over_streak: 4,
+            opp_def_rank_vs_pos: 24,
+            true_prob: 0.65,
+            polymarket_prob: 0.55,
+            ev_edge_pct: 10.0,
+            tier: 1,
+            tier_label: "Tier 1 (Green)",
+            intel_badges: ["High winds shift Mahomes ADOT to 5.4 yds", "4-game active Over streak", "BUF LB coverage allows 78% catch rate to TEs"]
+          },
+          {
+            prop_id: "james_cook_rush_yds_over",
+            player_name: "James Cook",
+            team: "BUF",
+            opponent: "KC",
+            position: "RB",
+            stat_category: "Rushing Yards",
+            direction: "OVER",
+            line: 64.5,
+            season_2026_hit_rate: 66.7,
+            rolling_17g_hit_rate: 64.7,
+            active_over_streak: 3,
+            opp_def_rank_vs_pos: 18,
+            true_prob: 0.60,
+            polymarket_prob: 0.53,
+            ev_edge_pct: 7.0,
+            tier: 2,
+            tier_label: "Tier 2 (Yellow)",
+            intel_badges: ["72% snap share in windy games", "3-game Over streak"]
+          },
+          {
+            prop_id: "patrick_mahomes_pass_yds_under",
+            player_name: "Patrick Mahomes",
+            team: "KC",
+            opponent: "BUF",
+            position: "QB",
+            stat_category: "Passing Yards",
+            direction: "UNDER",
+            line: 262.5,
+            season_2026_hit_rate: 55.6,
+            rolling_17g_hit_rate: 58.8,
+            active_over_streak: 0,
+            opp_def_rank_vs_pos: 5,
+            true_prob: 0.58,
+            polymarket_prob: 0.51,
+            ev_edge_pct: 7.0,
+            tier: 2,
+            tier_label: "Tier 2 (Yellow)",
+            intel_badges: ["Learned Rule: Wind > 17mph penalizes deep pass", "BUF #5 vs QB passing yardage"]
+          }
+        ]
+      },
+      {
+        game_id: "401671802",
+        season: 2026,
+        week: 10,
+        status: "STATUS_SCHEDULED",
+        kickoff_iso: "2026-11-15T21:25:00Z",
+        away_team: "DET",
+        away_name: "Detroit Lions",
+        away_record: "8-1",
+        away_score: 0,
+        home_team: "HOU",
+        home_name: "Houston Texans",
+        home_record: "6-3",
+        home_score: 0,
+        baseline_ou: 51.5,
+        weather: {
+          stadium: "NRG Stadium",
+          is_dome: true,
+          temp_f: 72.0,
+          wind_mph: 0.0,
+          precip_prob: 0,
+          summary: "Indoors / Dome (NRG Stadium) - Controlled 72°F, 0 mph wind"
+        },
+        away_injuries: [],
+        home_injuries: ["Nico Collins (WR) - Active [Full Participant]"],
+        rss_headlines: [
+          "Ben Johnson emphasizes fast-track indoor tempo for Lions offense at NRG Stadium.",
+          "Texans OC confirms Nico Collins cleared for full snap count in shootout environment."
+        ],
+        matchup_headline: "Fast indoor turf at NRG Stadium with two top-6 explosive play offenses creates elite +EV ceiling on Full Game Over and WR1 receiving props.",
+        game_totals: [
+          {
+            market_id: "DET_HOU_FULL_OVER",
+            market_type: "FULL_GAME_TOTAL",
+            target_team: "DET @ HOU",
+            direction: "OVER",
+            line: 51.5,
+            true_prob: 0.66,
+            polymarket_prob: 0.56,
+            ev_edge_pct: 10.0,
+            tier: 1,
+            tier_label: "Tier 1 (Green)",
+            intel_badges: ["DET 7-2 to the Over in dome stadiums", "Both offenses top-5 in yards per play", "Zero weather resistance (72°F indoor)"]
+          },
+          {
+            market_id: "DET_AWAY_TEAM_OVER",
+            market_type: "AWAY_TEAM_TOTAL",
+            target_team: "DET",
+            direction: "OVER",
+            line: 27.5,
+            true_prob: 0.65,
+            polymarket_prob: 0.55,
+            ev_edge_pct: 10.0,
+            tier: 1,
+            tier_label: "Tier 1 (Green)",
+            intel_badges: ["DET averaging 31.4 PPG indoors in 2026", "Play-action success rate 64%"]
+          },
+          {
+            market_id: "HOU_HOME_TEAM_OVER",
+            market_type: "HOME_TEAM_TOTAL",
+            target_team: "HOU",
+            direction: "OVER",
+            line: 23.5,
+            true_prob: 0.61,
+            polymarket_prob: 0.53,
+            ev_edge_pct: 8.0,
+            tier: 2,
+            tier_label: "Tier 2 (Yellow)",
+            intel_badges: ["DET allows 27th-most pass yds to outside WRs", "Stroud 112.4 passer rating at home"]
+          }
+        ],
+        player_props: [
+          {
+            prop_id: "amon_ra_st_brown_rec_yds_over",
+            player_name: "Amon-Ra St. Brown",
+            team: "DET",
+            opponent: "HOU",
+            position: "WR",
+            stat_category: "Receiving Yards",
+            direction: "OVER",
+            line: 79.5,
+            season_2026_hit_rate: 77.8,
+            rolling_17g_hit_rate: 82.4,
+            active_over_streak: 6,
+            opp_def_rank_vs_pos: 25,
+            true_prob: 0.71,
+            polymarket_prob: 0.59,
+            ev_edge_pct: 12.0,
+            tier: 1,
+            tier_label: "Tier 1 (Green)",
+            intel_badges: ["6-game active Over streak", "31.8% target share against man coverage", "HOU slot corner allows 1.94 yds/route"]
+          },
+          {
+            prop_id: "jahmyr_gibbs_rush_yds_over",
+            player_name: "Jahmyr Gibbs",
+            team: "DET",
+            opponent: "HOU",
+            position: "RB",
+            stat_category: "Rushing Yards",
+            direction: "OVER",
+            line: 68.5,
+            season_2026_hit_rate: 77.8,
+            rolling_17g_hit_rate: 76.5,
+            active_over_streak: 4,
+            opp_def_rank_vs_pos: 21,
+            true_prob: 0.66,
+            polymarket_prob: 0.56,
+            ev_edge_pct: 10.0,
+            tier: 1,
+            tier_label: "Tier 1 (Green)",
+            intel_badges: ["6.1 YPC on indoor turf", "4-game active Over streak"]
+          },
+          {
+            prop_id: "nico_collins_rec_yds_over",
+            player_name: "Nico Collins",
+            team: "HOU",
+            opponent: "DET",
+            position: "WR",
+            stat_category: "Receiving Yards",
+            direction: "OVER",
+            line: 76.5,
+            season_2026_hit_rate: 75.0,
+            rolling_17g_hit_rate: 76.5,
+            active_over_streak: 4,
+            opp_def_rank_vs_pos: 29,
+            true_prob: 0.67,
+            polymarket_prob: 0.57,
+            ev_edge_pct: 10.0,
+            tier: 1,
+            tier_label: "Tier 1 (Green)",
+            intel_badges: ["DET ranks 29th vs perimeter X receivers", "2.85 yards per route run in 2026"]
+          },
+          {
+            prop_id: "david_montgomery_rush_yds_under",
+            player_name: "David Montgomery",
+            team: "DET",
+            opponent: "HOU",
+            position: "RB",
+            stat_category: "Rushing Yards",
+            direction: "UNDER",
+            line: 61.5,
+            season_2026_hit_rate: 44.4,
+            rolling_17g_hit_rate: 47.0,
+            active_over_streak: 0,
+            opp_def_rank_vs_pos: 6,
+            true_prob: 0.46,
+            polymarket_prob: 0.52,
+            ev_edge_pct: -6.0,
+            tier: 4,
+            tier_label: "Tier 4 (Red)",
+            intel_badges: ["Cold leg warning: 2 straight Unders", "HOU interior D-line #6 in stuff rate"]
+          }
+        ]
+      }
+    ];
+
+    const DEMO_FINAL_5 = [
+      {
+        parlay_rank: 1,
+        parlay_title: "Tier-1 Indoor Turf Shootout & Scramble Anchor",
+        status: "PENDING",
+        combined_true_prob: 0.323,
+        combined_polymarket_prob: 0.192,
+        net_ev_edge_pct: 13.1,
+        correlation_safety_note: "Verified Non-Crossover Slip #1: Zero conflicting totals; positive indoor pace correlation.",
+        legs: [
+          {
+            leg_id: "amon_ra_st_brown_rec_yds_over",
+            game_id: "401671802",
+            matchup_label: "DET @ HOU",
+            leg_type: "PLAYER_PROP",
+            selection_label: "Amon-Ra St. Brown (DET) OVER 79.5 Receiving Yards",
+            team: "DET",
+            true_prob: 0.71,
+            polymarket_prob: 0.59,
+            ev_edge_pct: 12.0,
+            tier: 1,
+            rationale: "6-game active Over streak on dome turf vs #25 slot defense."
+          },
+          {
+            leg_id: "josh_allen_rush_yds_over",
+            game_id: "401671801",
+            matchup_label: "KC @ BUF",
+            leg_type: "PLAYER_PROP",
+            selection_label: "Josh Allen (BUF) OVER 38.5 Rushing Yards",
+            team: "BUF",
+            true_prob: 0.68,
+            polymarket_prob: 0.57,
+            ev_edge_pct: 11.0,
+            tier: 1,
+            rationale: "5-game active Over streak; 19.5 mph winds boost QB scramble frequency."
+          },
+          {
+            leg_id: "nico_collins_rec_yds_over",
+            game_id: "401671802",
+            matchup_label: "DET @ HOU",
+            leg_type: "PLAYER_PROP",
+            selection_label: "Nico Collins (HOU) OVER 76.5 Receiving Yards",
+            team: "HOU",
+            true_prob: 0.67,
+            polymarket_prob: 0.57,
+            ev_edge_pct: 10.0,
+            tier: 1,
+            rationale: "DET allows 29th-most yards to perimeter alpha WRs."
+          }
+        ]
+      },
+      {
+        parlay_rank: 2,
+        parlay_title: "Weather-Adjusted Totals & Short-Area Volume Trio",
+        status: "PENDING",
+        combined_true_prob: 0.270,
+        combined_polymarket_prob: 0.166,
+        net_ev_edge_pct: 10.4,
+        correlation_safety_note: "Verified Non-Crossover Slip #2: Pairs Orchard Park Under with high-percentage short TE receptions.",
+        legs: [
+          {
+            leg_id: "KC_BUF_FULL_UNDER",
+            game_id: "401671801",
+            matchup_label: "KC @ BUF",
+            leg_type: "FULL_GAME_TOTAL",
+            selection_label: "KC @ BUF UNDER 47.5 (FULL GAME TOTAL)",
+            team: "BUF",
+            true_prob: 0.63,
+            polymarket_prob: 0.54,
+            ev_edge_pct: 9.0,
+            tier: 1,
+            rationale: "19.5 mph Orchard Park crosswinds + top-5 scoring defenses."
+          },
+          {
+            leg_id: "travis_kelce_rec_over",
+            game_id: "401671801",
+            matchup_label: "KC @ BUF",
+            leg_type: "PLAYER_PROP",
+            selection_label: "Travis Kelce (KC) OVER 5.5 Receptions",
+            team: "KC",
+            true_prob: 0.65,
+            polymarket_prob: 0.55,
+            ev_edge_pct: 10.0,
+            tier: 1,
+            rationale: "Short ADOT checkdowns thrive even in low-scoring windy games."
+          },
+          {
+            leg_id: "jahmyr_gibbs_rush_yds_over",
+            game_id: "401671802",
+            matchup_label: "DET @ HOU",
+            leg_type: "PLAYER_PROP",
+            selection_label: "Jahmyr Gibbs (DET) OVER 68.5 Rushing Yards",
+            team: "DET",
+            true_prob: 0.66,
+            polymarket_prob: 0.56,
+            ev_edge_pct: 10.0,
+            tier: 1,
+            rationale: "4-game active Over streak; explosive indoor turf efficiency."
+          }
+        ]
+      },
+      {
+        parlay_rank: 3,
+        parlay_title: "NRG Dome Team Total & Script Stack",
+        status: "PENDING",
+        combined_true_prob: 0.257,
+        combined_polymarket_prob: 0.163,
+        net_ev_edge_pct: 9.4,
+        correlation_safety_note: "Verified Non-Crossover Slip #3: Positively correlated indoor team & game totals.",
+        legs: [
+          {
+            leg_id: "DET_HOU_FULL_OVER",
+            game_id: "401671802",
+            matchup_label: "DET @ HOU",
+            leg_type: "FULL_GAME_TOTAL",
+            selection_label: "DET @ HOU OVER 51.5 (FULL GAME TOTAL)",
+            team: "DET",
+            true_prob: 0.66,
+            polymarket_prob: 0.56,
+            ev_edge_pct: 10.0,
+            tier: 1,
+            rationale: "Zero wind resistance indoors; elite offensive pace."
+          },
+          {
+            leg_id: "DET_AWAY_TEAM_OVER",
+            game_id: "401671802",
+            matchup_label: "DET @ HOU",
+            leg_type: "AWAY_TEAM_TOTAL",
+            selection_label: "DET OVER 27.5 (AWAY TEAM TOTAL)",
+            team: "DET",
+            true_prob: 0.65,
+            polymarket_prob: 0.55,
+            ev_edge_pct: 10.0,
+            tier: 1,
+            rationale: "Lions averaging 31.4 PPG in domes in 2026."
+          },
+          {
+            leg_id: "james_cook_rush_yds_over",
+            game_id: "401671801",
+            matchup_label: "KC @ BUF",
+            leg_type: "PLAYER_PROP",
+            selection_label: "James Cook (BUF) OVER 64.5 Rushing Yards",
+            team: "BUF",
+            true_prob: 0.60,
+            polymarket_prob: 0.53,
+            ev_edge_pct: 7.0,
+            tier: 2,
+            rationale: "Heavy ground script in 19.5 mph Buffalo wind."
+          }
+        ]
+      },
+      {
+        parlay_rank: 4,
+        parlay_title: "Defensive Ceiling & Home Scoring Balance",
+        status: "PENDING",
+        combined_true_prob: 0.209,
+        combined_polymarket_prob: 0.140,
+        net_ev_edge_pct: 6.9,
+        correlation_safety_note: "Verified Non-Crossover Slip #4: Independent cross-conference edges.",
+        legs: [
+          {
+            leg_id: "KC_AWAY_TEAM_UNDER",
+            game_id: "401671801",
+            matchup_label: "KC @ BUF",
+            leg_type: "AWAY_TEAM_TOTAL",
+            selection_label: "KC UNDER 23.5 (AWAY TEAM TOTAL)",
+            team: "KC",
+            true_prob: 0.59,
+            polymarket_prob: 0.52,
+            ev_edge_pct: 7.0,
+            tier: 2,
+            rationale: "Bills two-high shell + wind limits deep scoring."
+          },
+          {
+            leg_id: "patrick_mahomes_pass_yds_under",
+            game_id: "401671801",
+            matchup_label: "KC @ BUF",
+            leg_type: "PLAYER_PROP",
+            selection_label: "Patrick Mahomes (KC) UNDER 262.5 Passing Yards",
+            team: "KC",
+            true_prob: 0.58,
+            polymarket_prob: 0.51,
+            ev_edge_pct: 7.0,
+            tier: 2,
+            rationale: "BUF ranks #5 vs pass yardage; crosswind penalty active."
+          },
+          {
+            leg_id: "HOU_HOME_TEAM_OVER",
+            game_id: "401671802",
+            matchup_label: "DET @ HOU",
+            leg_type: "HOME_TEAM_TOTAL",
+            selection_label: "HOU OVER 23.5 (HOME TEAM TOTAL)",
+            team: "HOU",
+            true_prob: 0.61,
+            polymarket_prob: 0.53,
+            ev_edge_pct: 8.0,
+            tier: 2,
+            rationale: "Texans home pass rate + Nico Collins return."
+          }
+        ]
+      },
+      {
+        parlay_rank: 5,
+        parlay_title: "Week 10 Value Anchor Combo",
+        status: "PENDING",
+        combined_true_prob: 0.347,
+        combined_polymarket_prob: 0.281,
+        net_ev_edge_pct: 6.6,
+        correlation_safety_note: "Verified Non-Crossover Slip #5: Clean 2-leg +EV anchor.",
+        legs: [
+          {
+            leg_id: "BUF_HOME_TEAM_OVER",
+            game_id: "401671801",
+            matchup_label: "KC @ BUF",
+            leg_type: "HOME_TEAM_TOTAL",
+            selection_label: "BUF OVER 23.5 (HOME TEAM TOTAL)",
+            team: "BUF",
+            true_prob: 0.57,
+            polymarket_prob: 0.53,
+            ev_edge_pct: 4.0,
+            tier: 2,
+            rationale: "68.4% home red-zone TD conversion rate."
+          },
+          {
+            leg_id: "HOU_HOME_TEAM_OVER_ALT",
+            game_id: "401671802",
+            matchup_label: "DET @ HOU",
+            leg_type: "HOME_TEAM_TOTAL",
+            selection_label: "HOU OVER 23.5 (HOME TEAM TOTAL)",
+            team: "HOU",
+            true_prob: 0.61,
+            polymarket_prob: 0.53,
+            ev_edge_pct: 8.0,
+            tier: 2,
+            rationale: "Indoor shootout script forces 38+ Stroud dropbacks."
+          }
+        ]
+      }
+    ];
+
+    const DEMO_GRADED_HISTORY = [
+      {
+        id: "hist_w9_1",
+        name: "Week 9 AI Final 5 - Slip #1 (Elite +EV)",
+        status: "WON",
+        stake: 50,
+        combined_true_prob: 0.31,
+        combined_polymarket_prob: 0.21,
+        created_at: "2026-11-08T14:00:00Z",
+        legs: [
+          { selection_label: "Saquon Barkley (PHI) OVER 86.5 Rushing Yards", status: "WON", actual_value: 124 },
+          { selection_label: "Ja'Marr Chase (CIN) OVER 78.5 Receiving Yards", status: "WON", actual_value: 112 },
+          { selection_label: "BAL Team Total OVER 24.5", status: "WON", actual_value: 31 }
+        ]
+      },
+      {
+        id: "hist_w9_2",
+        name: "Week 9 AI Final 5 - Slip #2 (Outdoor Pass Stack)",
+        status: "LOST",
+        stake: 25,
+        combined_true_prob: 0.26,
+        combined_polymarket_prob: 0.18,
+        created_at: "2026-11-08T14:00:00Z",
+        legs: [
+          { selection_label: "Lamar Jackson (BAL) OVER 232.5 Passing Yards", status: "WON", actual_value: 280 },
+          { selection_label: "Garrett Wilson (NYJ) OVER 69.5 Receiving Yards", status: "WON", actual_value: 91 },
+          { selection_label: "CeeDee Lamb (DAL) OVER 82.5 Receiving Yards", status: "LOST", actual_value: 54 }
+        ],
+        autopsy: {
+          failure_headline: "4th Quarter Blowout Script & Shoulder Exit",
+          root_cause_category: "GAME_SCRIPT_BLOWOUT",
+          detailed_autopsy: "CeeDee Lamb saw 8 first-half targets for 54 yards, but Dallas trailed by 21 points entering the 4th quarter and sat starters for the final two possessions after a minor AC joint stinger.",
+          learned_adjustment_rule: "Discount WR1 4th-quarter volume projections by -4.5% when underdog offensive line ranks bottom-8 in pressure rate allowed.",
+          parameter_weight_delta: "Bottom-8 Pass Block OL vs Top-5 Pass Rush: -4.5% WR1 Over Prob"
+        }
+      }
+    ];
+
+    const DEMO_LEARNINGS = [
+      {
+        failure_headline: "Outdoor Crosswind Passing Efficiency Drop",
+        root_cause_category: "WEATHER_VARIANCE",
+        detailed_autopsy: "Sustained crosswinds above 17 mph reduced deep air-yard completion rate by 19% and depressed full-game scoring.",
+        learned_adjustment_rule: "When outdoor sustained wind exceeds 17 mph, penalize QB Passing Yards Overs and Full Game Total Overs by -6.5% true probability.",
+        parameter_weight_delta: "Outdoor Wind Penalty >= 17mph: -6.5% Over Prob"
+      },
+      {
+        failure_headline: "4th Quarter Blowout Script & Shoulder Exit",
+        root_cause_category: "GAME_SCRIPT_BLOWOUT",
+        detailed_autopsy: "Heavy spread differentials and high pass-rush pressure led to early 4th quarter starter withdrawal.",
+        learned_adjustment_rule: "Discount WR1 4th-quarter volume projections by -4.5% when offensive line ranks bottom-8 in pressure rate allowed.",
+        parameter_weight_delta: "Bottom-8 Pass Block OL vs Top-5 Pass Rush: -4.5% WR1 Over Prob"
+      },
+      {
+        failure_headline: "Friday Presser RB Committee Snap Split",
+        root_cause_category: "USAGE_COMMITTEE_SHIFT",
+        detailed_autopsy: "Head coach Friday quote noting 'hot hand rotation' resulted in a 52%/48% snap split that capped RB1 rushing attempts at 12.",
+        learned_adjustment_rule: "When RSS beat feeds detect 'committee' or 'hot hand' quotes within 48 hours of kickoff, cap RB1 Rushing Attempts/Yards Over at Tier 3 (Orange).",
+        parameter_weight_delta: "Beat RSS Committee Keyword Flag: Cap at Tier 3 (Orange)"
+      }
+    ];
+
+    // =====================================================================
+    // UI RENDER FUNCTIONS
+    // =====================================================================
+
+    function getTierPillClass(tier) {
+      const t = Number(tier) || 3;
+      if (t === 1) return "tier-1-pill";
+      if (t === 2) return "tier-2-pill";
+      if (t === 3) return "tier-3-pill";
+      return "tier-4-pill";
+    }
+
+    function isLegSelected(legId) {
+      return activeParlaySlip.some((item) => item.leg_id === legId);
+    }
+
+    window.renderMatchupBoard = function () {
+      const container = document.getElementById("matchupsContainer");
+      const searchQ = (document.getElementById("searchFilterInput").value || "").toLowerCase().trim();
+      const tierFilter = document.getElementById("tierFilterSelect").value;
+      const posFilter = document.getElementById("posFilterSelect").value;
+      const dirFilter = document.getElementById("dirFilterSelect").value;
+      const posEvOnly = document.getElementById("positiveEvOnlyToggle").checked;
+
+      if (!matchupsData.length) {
+        container.innerHTML = `
+          <div class="bg-slateCard border border-borderCrisp rounded-xl p-8 text-center text-slate-400 font-mono text-sm">
+            No matchups found. Run the GitHub Action or load Demo Data.
+          </div>`;
+        return;
+      }
+
+      container.innerHTML = matchupsData.map((game) => {
+        const filteredProps = (game.player_props || []).filter((pp) => {
+          if (tierFilter === "1" && Number(pp.tier) !== 1) return false;
+          if (tierFilter === "2" && Number(pp.tier) > 2) return false;
+          if (tierFilter === "3" && Number(pp.tier) !== 3) return false;
+          if (tierFilter === "4" && Number(pp.tier) !== 4) return false;
+          if (posFilter !== "ALL" && pp.position !== posFilter) return false;
+          if (dirFilter !== "ALL" && pp.direction !== dirFilter) return false;
+          if (posEvOnly && Number(pp.ev_edge_pct) <= 0) return false;
+
+          if (searchQ) {
+            const hay = `${pp.player_name} ${pp.team} ${pp.stat_category} ${(pp.intel_badges || []).join(" ")}`.toLowerCase();
+            if (!hay.includes(searchQ)) return false;
+          }
+          return true;
+        });
+
+        const kickoffStr = game.kickoff_iso
+          ? new Date(game.kickoff_iso).toLocaleString("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
+          : "TBD";
+
+        const weatherIcon = game.weather?.is_dome ? "🏟️ DOME" : (Number(game.weather?.wind_mph) >= 15 ? "🌬️ HIGH WIND" : "☀️ OUTDOOR");
+
+        // Render Top Game Totals (Strictly Full Game O/U, Away Team O/U, Home Team O/U)
+        const gameTotalsHtml = (game.game_totals || []).map((gt) => {
+          const selectedClass = isLegSelected(gt.market_id) ? "prop-btn-selected" : "";
+          const tierClass = getTierPillClass(gt.tier);
+          const legPayload = encodeURIComponent(JSON.stringify({
+            leg_id: gt.market_id,
+            game_id: game.game_id,
+            matchup_label: `${game.away_team} @ ${game.home_team}`,
+            leg_type: gt.market_type,
+            selection_label: `${gt.target_team} ${gt.direction} ${gt.line} (${gt.market_type.replace(/_/g, " ")})`,
+            team: gt.target_team,
+            direction: gt.direction,
+            true_prob: Number(gt.true_prob),
+            polymarket_prob: Number(gt.polymarket_prob),
+            ev_edge_pct: Number(gt.ev_edge_pct),
+            tier: Number(gt.tier)
+          }));
+
+          return `
+            <button
+              onclick="toggleSlipLeg('${legPayload}')"
+              class="text-left bg-obsidian hover:bg-slateElevated border border-borderCrisp rounded-xl p-3.5 transition-all flex flex-col justify-between gap-2 ${selectedClass}"
+            >
+              <div class="flex items-center justify-between gap-2 w-full">
+                <span class="text-[10px] font-mono uppercase tracking-wider text-slate-400">
+                  ${gt.market_type.replace(/_/g, " ")}
+                </span>
+                <span class="text-[10px] font-mono px-2 py-0.5 rounded-full font-semibold ${tierClass}">
+                  ${gt.tier_label}
+                </span>
+              </div>
+              <div class="flex items-baseline justify-between w-full">
+                <span class="text-sm font-bold text-white">
+                  ${gt.target_team} <span class="${gt.direction === 'OVER' ? 'text-emerald-400' : 'text-amber-400'}">${gt.direction} ${gt.line}</span>
+                </span>
+                <span class="text-xs font-mono font-bold ${Number(gt.ev_edge_pct) >= 0 ? 'text-emerald-400' : 'text-rose-400'}">
+                  ${Number(gt.ev_edge_pct) >= 0 ? '+' : ''}${Number(gt.ev_edge_pct).toFixed(1)}% EV
+                </span>
+              </div>
+              <div class="flex items-center justify-between text-[11px] font-mono text-slate-400 pt-1 border-t border-borderCrisp/60 w-full">
+                <span>AI True: <strong class="text-slate-200">${(Number(gt.true_prob) * 100).toFixed(0)}%</strong></span>
+                <span>Polymarket: <strong class="text-blue-400">${(Number(gt.polymarket_prob) * 100).toFixed(0)}%</strong></span>
+              </div>
+              <div class="flex flex-wrap gap-1 pt-1">
+                ${(gt.intel_badges || []).map(b => `<span class="text-[10px] bg-slateCard text-slate-300 px-2 py-0.5 rounded border border-borderCrisp">${b}</span>`).join("")}
+              </div>
+            </button>
+          `;
+        }).join("");
+
+        // Render Player Props
+        const playerPropsHtml = filteredProps.map((pp) => {
+          const selectedClass = isLegSelected(pp.prop_id) ? "prop-btn-selected" : "";
+          const tierClass = getTierPillClass(pp.tier);
+          const legPayload = encodeURIComponent(JSON.stringify({
+            leg_id: pp.prop_id,
+            game_id: game.game_id,
+            matchup_label: `${game.away_team} @ ${game.home_team}`,
+            leg_type: "PLAYER_PROP",
+            player_name: pp.player_name,
+            selection_label: `${pp.player_name} (${pp.team}) ${pp.direction} ${pp.line} ${pp.stat_category}`,
+            team: pp.team,
+            direction: pp.direction,
+            true_prob: Number(pp.true_prob),
+            polymarket_prob: Number(pp.polymarket_prob),
+            ev_edge_pct: Number(pp.ev_edge_pct),
+            tier: Number(pp.tier)
+          }));
+
+          return `
+            <div
+              onclick="toggleSlipLeg('${legPayload}')"
+              class="cursor-pointer bg-obsidian hover:bg-slateElevated border border-borderCrisp rounded-xl p-3.5 transition-all flex flex-col justify-between gap-2.5 ${selectedClass}"
+            >
+              <div class="flex items-start justify-between gap-2">
+                <div>
+                  <div class="flex items-center gap-2">
+                    <span class="px-1.5 py-0.5 text-[10px] font-mono font-bold rounded bg-slateCard text-slate-300 border border-borderCrisp">
+                      ${pp.position} · ${pp.team}
+                    </span>
+                    <h4 class="text-sm font-bold text-white">${pp.player_name}</h4>
+                  </div>
+                  <p class="text-xs font-mono mt-1">
+                    <span class="font-bold ${pp.direction === 'OVER' ? 'text-emerald-400' : 'text-amber-400'}">
+                      ${pp.direction} ${pp.line}
+                    </span>
+                    <span class="text-slate-300"> ${pp.stat_category}</span>
+                  </p>
+                </div>
+                <span class="text-[10px] font-mono px-2.5 py-0.5 rounded-full font-semibold shrink-0 ${tierClass}">
+                  ${pp.tier_label}
+                </span>
+              </div>
+
+              <!-- Quant Metrics Strip -->
+              <div class="grid grid-cols-4 gap-1.5 bg-slateCard/70 border border-borderCrisp/70 rounded-lg p-2 text-[11px] font-mono">
+                <div>
+                  <span class="text-slate-500 block text-[9px] uppercase">True / Poly</span>
+                  <span class="text-white font-semibold">${(Number(pp.true_prob) * 100).toFixed(0)}%</span>
+                  <span class="text-blue-400">/${(Number(pp.polymarket_prob) * 100).toFixed(0)}%</span>
+                </div>
+                <div>
+                  <span class="text-slate-500 block text-[9px] uppercase">+EV Edge</span>
+                  <span class="font-bold ${Number(pp.ev_edge_pct) >= 0 ? 'text-emerald-400' : 'text-rose-400'}">
+                    ${Number(pp.ev_edge_pct) >= 0 ? '+' : ''}${Number(pp.ev_edge_pct).toFixed(1)}%
+                  </span>
+                </div>
+                <div>
+                  <span class="text-slate-500 block text-[9px] uppercase">17G / Streak</span>
+                  <span class="text-slate-200">${Number(pp.rolling_17g_hit_rate).toFixed(0)}%</span>
+                  <span class="text-amber-400 font-bold"> (${pp.active_over_streak}G🔥)</span>
+                </div>
+                <div>
+                  <span class="text-slate-500 block text-[9px] uppercase">Opp Def Rank</span>
+                  <span class="${Number(pp.opp_def_rank_vs_pos) >= 20 ? 'text-emerald-400' : 'text-slate-300'} font-semibold">
+                    #${pp.opp_def_rank_vs_pos} vs ${pp.position}
+                  </span>
+                </div>
+              </div>
+
+              <!-- AI Intel Badges -->
+              <div class="flex flex-wrap gap-1.5">
+                ${(pp.intel_badges || []).map(badge => `
+                  <span class="text-[10px] bg-slateCard text-slate-300 px-2 py-0.5 rounded border border-borderCrisp">
+                    ⚡ ${badge}
+                  </span>
+                `).join("")}
+              </div>
+            </div>
+          `;
+        }).join("");
+
+        return `
+          <article class="bg-slateCard border border-borderCrisp rounded-2xl overflow-hidden shadow-xl">
+            <!-- Matchup Top Banner -->
+            <div class="p-4 sm:p-5 bg-gradient-to-r from-slateCard via-slateElevated to-slateCard border-b border-borderCrisp space-y-3">
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <div class="flex items-center gap-3">
+                  <span class="px-2.5 py-1 rounded-lg bg-obsidian border border-borderCrisp text-xs font-mono font-bold text-emerald-400">
+                    WEEK ${game.week || 10}
+                  </span>
+                  <div>
+                    <h3 class="text-base sm:text-lg font-extrabold text-white tracking-tight">
+                      ${game.away_name} (${game.away_record}) <span class="text-slate-500 font-normal">@</span> ${game.home_name} (${game.home_record})
+                    </h3>
+                    <p class="text-xs font-mono text-slate-400">${kickoffStr}</p>
+                  </div>
+                </div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <span class="px-3 py-1 rounded-full text-xs font-mono bg-obsidian border border-borderCrisp text-slate-200">
+                    ${weatherIcon} · ${game.weather?.summary || 'Standard Conditions'}
+                  </span>
+                </div>
+              </div>
+
+              <!-- AI Matchup Synthesis & RSS Ticker -->
+              <div class="bg-obsidian/80 border border-borderCrisp rounded-xl p-3 text-xs text-slate-300 space-y-1.5">
+                <p class="font-medium text-emerald-300">
+                  <strong class="font-mono uppercase text-[10px] bg-emerald-500/20 px-1.5 py-0.5 rounded mr-1.5">AI Script Synthesis</strong>
+                  ${game.matchup_headline || ''}
+                </p>
+                ${(game.rss_headlines && game.rss_headlines.length) ? `
+                  <p class="text-[11px] font-mono text-slate-400">
+                    📰 <strong class="text-slate-300">Beat & RSS Intel:</strong> ${game.rss_headlines.join(" • ")}
+                  </p>
+                ` : ''}
+              </div>
+
+              <!-- Strictly Scoped Game Totals Row (Full Game O/U + Home/Away Team Totals O/U) -->
+              <div>
+                <h4 class="text-[11px] font-mono uppercase tracking-wider text-slate-400 mb-2">
+                  Game & Team Totals (Click Any Line to Add to Parlay Slip)
+                </h4>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  ${gameTotalsHtml}
+                </div>
+              </div>
+            </div>
+
+            <!-- Player Props Grid -->
+            <div class="p-4 sm:p-5 space-y-3">
+              <div class="flex items-center justify-between">
+                <h4 class="text-xs font-mono uppercase tracking-wider text-slate-400">
+                  Skill Player Props (${filteredProps.length} shown)
+                </h4>
+              </div>
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                ${playerPropsHtml || '<p class="text-xs font-mono text-slate-500 col-span-2 py-4 text-center">No player props match your current filter criteria.</p>'}
+              </div>
+            </div>
+          </article>
+        `;
+      }).join("");
+    };
+
+    // =====================================================================
+    // PARLAY SLIP & CORRELATION / COMBO ENGINE
+    // =====================================================================
+
+    window.toggleSlipLeg = function (encodedPayload) {
+      const leg = JSON.parse(decodeURIComponent(encodedPayload));
+      const existingIdx = activeParlaySlip.findIndex((item) => item.leg_id === leg.leg_id);
+      if (existingIdx > -1) {
+        activeParlaySlip.splice(existingIdx, 1);
+      } else {
+        activeParlaySlip.push(leg);
+      }
+      renderMatchupBoard();
+      renderParlaySlip();
+    };
+
+    window.removeSlipLegById = function (legId) {
+      activeParlaySlip = activeParlaySlip.filter((item) => item.leg_id !== legId);
+      renderMatchupBoard();
+      renderParlaySlip();
+    };
+
+    window.clearParlaySlip = function () {
+      activeParlaySlip = [];
+      renderMatchupBoard();
+      renderParlaySlip();
+    };
+
+    function evaluateCorrelationWarnings(legs) {
+      const warnings = [];
+      const byGame = {};
+      legs.forEach((l) => {
+        byGame[l.game_id] = byGame[l.game_id] || [];
+        byGame[l.game_id].push(l);
+      });
+
+      Object.values(byGame).forEach((gameLegs) => {
+        if (gameLegs.length < 2) return;
+        const hasFullUnder = gameLegs.some((l) => l.leg_type === "FULL_GAME_TOTAL" && l.direction === "UNDER");
+        const hasFullOver = gameLegs.some((l) => l.leg_type === "FULL_GAME_TOTAL" && l.direction === "OVER");
+        const hasTeamOver = gameLegs.some((l) => l.leg_type.includes("TEAM_TOTAL") && l.direction === "OVER");
+        const hasPlayerOver = gameLegs.some((l) => l.leg_type === "PLAYER_PROP" && l.direction === "OVER");
+        const hasPlayerUnder = gameLegs.some((l) => l.leg_type === "PLAYER_PROP" && l.direction === "UNDER");
+
+        if (hasFullUnder && hasTeamOver) {
+          warnings.push(`Negative Correlation (${gameLegs[0].matchup_label}): Pairing Full Game UNDER with a Team Total OVER reduces true joint probability.`);
+        }
+        if (hasFullUnder && gameLegs.filter(l => l.leg_type === "PLAYER_PROP" && l.direction === "OVER").length >= 2) {
+          warnings.push(`Polymarket Combo Conflict (${gameLegs[0].matchup_label}): Full Game UNDER paired with multiple offensive Player OVERs.`);
+        }
+        if (hasFullOver && hasPlayerUnder) {
+          warnings.push(`Slight Negative Correlation (${gameLegs[0].matchup_label}): Full Game OVER paired with skill Player UNDER.`);
+        }
+      });
+
+      return warnings;
+    }
+
+    window.updateParlayMath = function () {
+      const stake = Math.max(1, Number(document.getElementById("customStakeInput").value) || 25);
+      if (!activeParlaySlip.length) {
+        document.getElementById("slipTrueProb").textContent = "0.0%";
+        document.getElementById("slipPolyProb").textContent = "0.0%";
+        document.getElementById("slipEvEdge").textContent = "+0.0%";
+        document.getElementById("slipEstPayout").textContent = `1.00x ($0.00)`;
+        return;
+      }
+
+      const combTrue = activeParlaySlip.reduce((acc, l) => acc * Number(l.true_prob || 0.5), 1);
+      const combPoly = activeParlaySlip.reduce((acc, l) => acc * Number(l.polymarket_prob || 0.5), 1);
+      const edgePct = (combTrue - combPoly) * 100;
+      const multiplier = combPoly > 0 ? (1 / combPoly) : 1;
+      const estPayout = stake * multiplier;
+
+      document.getElementById("slipTrueProb").textContent = `${(combTrue * 100).toFixed(1)}%`;
+      document.getElementById("slipPolyProb").textContent = `${(combPoly * 100).toFixed(1)}%`;
+      const evEl = document.getElementById("slipEvEdge");
+      evEl.textContent = `${edgePct >= 0 ? "+" : ""}${edgePct.toFixed(1)}%`;
+      evEl.className = edgePct >= 0 ? "text-emerald-400 font-bold" : "text-rose-400 font-bold";
+      document.getElementById("slipEstPayout").textContent = `${multiplier.toFixed(2)}x ($${estPayout.toFixed(2)})`;
+    };
+
+    function renderParlaySlip() {
+      document.getElementById("slipCountBadge").textContent = String(activeParlaySlip.length);
+      const listEl = document.getElementById("slipLegsList");
+      const warnEl = document.getElementById("slipCorrelationWarnings");
+
+      if (!activeParlaySlip.length) {
+        listEl.innerHTML = `
+          <div class="bg-obsidian/60 border border-dashed border-borderCrisp rounded-xl p-6 text-center text-xs text-slate-500 font-mono">
+            Click any Full Game Total, Team Total, or Player Prop on the board to build a custom parlay.
+          </div>`;
+        warnEl.classList.add("hidden");
+        updateParlayMath();
+        return;
+      }
+
+      const warnings = evaluateCorrelationWarnings(activeParlaySlip);
+      if (warnings.length) {
+        warnEl.classList.remove("hidden");
+        warnEl.innerHTML = warnings.map((w) => `
+          <div class="bg-amber-500/15 border border-amber-500/40 rounded-lg p-2.5 text-[11px] font-mono text-amber-300">
+            ⚠️ ${w}
+          </div>
+        `).join("");
+      } else {
+        warnEl.classList.add("hidden");
+      }
+
+      listEl.innerHTML = activeParlaySlip.map((leg) => `
+        <div class="bg-obsidian border border-borderCrisp rounded-xl p-3 flex items-start justify-between gap-2">
+          <div class="space-y-1">
+            <div class="flex items-center gap-1.5">
+              <span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slateCard text-slate-300 border border-borderCrisp">
+                ${leg.matchup_label}
+              </span>
+              <span class="text-[10px] font-mono text-emerald-400 font-bold">
+                ${Number(leg.ev_edge_pct) >= 0 ? '+' : ''}${Number(leg.ev_edge_pct).toFixed(1)}% EV
+              </span>
+            </div>
+            <p class="text-xs font-bold text-white">${leg.selection_label}</p>
+            <p class="text-[10px] font-mono text-slate-400">
+              True: ${(Number(leg.true_prob) * 100).toFixed(0)}% · Poly: ${(Number(leg.polymarket_prob) * 100).toFixed(0)}%
+            </p>
+          </div>
+          <button onclick="removeSlipLegById('${leg.leg_id}')" class="text-slate-500 hover:text-rose-400 text-xs font-mono px-1">
+            ✕
+          </button>
+        </div>
+      `).join("");
+
+      updateParlayMath();
+    }
+
+    // =====================================================================
+    // RENDER FINAL 5 AI PARLAYS & GRADED AUTOPSY LAB
+    // =====================================================================
+
+    window.loadAiParlayIntoSlip = function (rankIndex) {
+      const target = aiParlaysData.find((p) => Number(p.parlay_rank) === Number(rankIndex));
+      if (!target) return;
+      activeParlaySlip = (target.legs || []).map((l) => ({
+        leg_id: l.leg_id,
+        game_id: l.game_id,
+        matchup_label: l.matchup_label,
+        leg_type: l.leg_type,
+        selection_label: l.selection_label,
+        team: l.team,
+        direction: l.selection_label.includes("OVER") ? "OVER" : "UNDER",
+        true_prob: Number(l.true_prob),
+        polymarket_prob: Number(l.polymarket_prob),
+        ev_edge_pct: Number(l.ev_edge_pct),
+        tier: Number(l.tier || 1)
+      }));
+      document.getElementById("customParlayNameInput").value = `AI Final 5 #${target.parlay_rank}: ${target.parlay_title}`;
+      renderMatchupBoard();
+      renderParlaySlip();
+    };
+
+    function renderFinal5Tab() {
+      const container = document.getElementById("final5Container");
+      container.innerHTML = aiParlaysData.map((p) => {
+        const multiplier = Number(p.combined_polymarket_prob) > 0 ? (1 / Number(p.combined_polymarket_prob)).toFixed(2) : "1.00";
+        return `
+          <div class="bg-slateCard border border-borderCrisp rounded-2xl p-5 space-y-4">
+            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-borderCrisp pb-3">
+              <div class="space-y-1">
+                <div class="flex items-center gap-2">
+                  <span class="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-emerald-500 text-slate-950">
+                    FINAL 5 · SLIP #${p.parlay_rank}
+                  </span>
+                  <h3 class="text-base font-bold text-white">${p.parlay_title}</h3>
+                </div>
+                <p class="text-xs font-mono text-emerald-400">
+                  ✓ ${p.correlation_safety_note || 'Non-Crossover Verified'}
+                </p>
+              </div>
+              <div class="flex items-center gap-2">
+                <button
+                  onclick="loadAiParlayIntoSlip(${p.parlay_rank})"
+                  class="px-3.5 py-2 rounded-lg text-xs font-bold bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition"
+                >
+                  Load into Parlay Slip
+                </button>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+              ${(p.legs || []).map((leg) => `
+                <div class="bg-obsidian border border-borderCrisp rounded-xl p-3 space-y-1.5">
+                  <div class="flex items-center justify-between text-[10px] font-mono">
+                    <span class="text-slate-400">${leg.matchup_label}</span>
+                    <span class="text-emerald-400 font-bold">+${Number(leg.ev_edge_pct).toFixed(1)}% EV</span>
+                  </div>
+                  <p class="text-xs font-bold text-white">${leg.selection_label}</p>
+                  <p class="text-[11px] text-slate-400">${leg.rationale || ''}</p>
+                </div>
+              `).join("")}
+            </div>
+
+            <div class="flex flex-wrap items-center justify-between gap-4 bg-obsidian border border-borderCrisp rounded-xl px-4 py-2.5 text-xs font-mono">
+              <span>Combined True Prob: <strong class="text-white">${(Number(p.combined_true_prob) * 100).toFixed(1)}%</strong></span>
+              <span>Polymarket Implied: <strong class="text-blue-400">${(Number(p.combined_polymarket_prob) * 100).toFixed(1)}% (${multiplier}x)</strong></span>
+              <span>Net Parlay Edge: <strong class="text-emerald-400">+${Number(p.net_ev_edge_pct).toFixed(1)}% EV</strong></span>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function renderAutopsyTab() {
+      const allTracked = [...userParlaysData];
+      const graded = allTracked.filter((p) => p.status === "WON" || p.status === "LOST");
+      const wonCount = graded.filter((p) => p.status === "WON").length;
+      const winRate = graded.length ? ((wonCount / graded.length) * 100).toFixed(1) : "0.0";
+
+      document.getElementById("historyKpiRow").innerHTML = `
+        <div class="bg-slateCard border border-borderCrisp rounded-xl p-4">
+          <span class="text-[11px] font-mono uppercase text-slate-400">Tracked Parlays</span>
+          <p class="text-2xl font-extrabold font-mono text-white mt-1">${allTracked.length}</p>
+        </div>
+        <div class="bg-slateCard border border-borderCrisp rounded-xl p-4">
+          <span class="text-[11px] font-mono uppercase text-slate-400">Graded Parlay Win Rate</span>
+          <p class="text-2xl font-extrabold font-mono text-emerald-400 mt-1">${winRate}% (${wonCount}/${graded.length})</p>
+        </div>
+        <div class="bg-slateCard border border-borderCrisp rounded-xl p-4">
+          <span class="text-[11px] font-mono uppercase text-slate-400">Active Self-Learning Rules</span>
+          <p class="text-2xl font-extrabold font-mono text-amber-400 mt-1">${modelLearningsData.length}</p>
+        </div>
+        <div class="bg-slateCard border border-borderCrisp rounded-xl p-4">
+          <span class="text-[11px] font-mono uppercase text-slate-400">AI Synthesis Engine</span>
+          <p class="text-lg font-extrabold font-mono text-blue-400 mt-2">gemini-3.8-flash</p>
+        </div>
+      `;
+
+      document.getElementById("learningsFeedContainer").innerHTML = modelLearningsData.map((rule) => `
+        <div class="bg-obsidian border border-borderCrisp rounded-xl p-4 space-y-2">
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30">
+              ${rule.root_cause_category}
+            </span>
+            <span class="text-[10px] font-mono text-emerald-400 font-semibold">
+              ${rule.parameter_weight_delta || ''}
+            </span>
+          </div>
+          <h4 class="text-xs font-bold text-white">${rule.failure_headline}</h4>
+          <p class="text-xs text-slate-400">${rule.detailed_autopsy}</p>
+          <div class="bg-slateCard border border-borderCrisp rounded-lg p-2.5 text-[11px] font-mono text-emerald-300">
+            <strong>Active Prompt Rule:</strong> ${rule.learned_adjustment_rule}
+          </div>
+        </div>
+      `).join("");
+
+      document.getElementById("gradedParlaysContainer").innerHTML = allTracked.map((p) => {
+        const badgeStyle =
+          p.status === "WON"
+            ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
+            : p.status === "LOST"
+            ? "bg-rose-500/20 text-rose-300 border-rose-500/40"
+            : "bg-blue-500/20 text-blue-300 border-blue-500/40";
+
+        return `
+          <div class="bg-obsidian border border-borderCrisp rounded-xl p-4 space-y-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h4 class="text-sm font-bold text-white">${p.name || p.parlay_title || 'Saved Parlay'}</h4>
+                <p class="text-[11px] font-mono text-slate-400">
+                  Stake: $${p.stake || 25} · True Prob: ${(Number(p.combined_true_prob || 0) * 100).toFixed(1)}%
+                </p>
+              </div>
+              <span class="px-3 py-1 rounded-full text-xs font-mono font-bold border ${badgeStyle}">
+                ${p.status}
+              </span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-2">
+              ${(p.legs || []).map((l) => `
+                <div class="bg-slateCard border border-borderCrisp rounded-lg p-2.5 text-xs flex items-center justify-between gap-2">
+                  <span class="text-slate-200 font-medium">${l.selection_label}</span>
+                  <span class="font-mono text-[11px] font-bold ${l.status === 'WON' ? 'text-emerald-400' : l.status === 'LOST' ? 'text-rose-400' : 'text-slate-400'}">
+                    ${l.status || 'PENDING'} ${l.actual_value !== undefined ? `(${l.actual_value})` : ''}
+                  </span>
+                </div>
+              `).join("")}
+            </div>
+
+            ${p.autopsy ? `
+              <div class="bg-rose-950/25 border border-rose-500/40 rounded-xl p-3.5 space-y-1.5">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs font-mono font-bold text-rose-300">
+                    🔬 AI Post-Mortem Failure Autopsy: ${p.autopsy.failure_headline}
+                  </span>
+                  <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/20 text-rose-300">
+                    ${p.autopsy.root_cause_category}
+                  </span>
+                </div>
+                <p class="text-xs text-slate-300">${p.autopsy.detailed_autopsy}</p>
+                <p class="text-[11px] font-mono text-emerald-400 pt-1">
+                  ➔ Learned Self-Correction Rule: ${p.autopsy.learned_adjustment_rule}
+                </p>
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }).join("");
+    }
+
+    // =====================================================================
+    // SAVE PARLAY TO TRACKER (FIRESTORE + LOCAL STORAGE FALLBACK)
+    // =====================================================================
+
+    window.saveCurrentParlayToTracker = async function () {
+      if (!activeParlaySlip.length) {
+        alert("Add at least 1 leg to your Parlay Slip first.");
+        return;
+      }
+      const nameInput = document.getElementById("customParlayNameInput").value.trim();
+      const stake = Math.max(1, Number(document.getElementById("customStakeInput").value) || 25);
+      const combTrue = activeParlaySlip.reduce((acc, l) => acc * Number(l.true_prob || 0.5), 1);
+      const combPoly = activeParlaySlip.reduce((acc, l) => acc * Number(l.polymarket_prob || 0.5), 1);
+
+      const newParlay = {
+        name: nameInput || `Custom ${activeParlaySlip.length}-Leg Parlay (${new Date().toLocaleDateString()})`,
+        stake: stake,
+        legs: activeParlaySlip,
+        combined_true_prob: Number(combTrue.toFixed(4)),
+        combined_polymarket_prob: Number(combPoly.toFixed(4)),
+        status: "PENDING",
+        created_at: new Date().toISOString()
+      };
+
+      const feedbackEl = document.getElementById("saveSlipFeedback");
+      try {
+        if (isLiveFirestore && db) {
+          await addDoc(collection(db, "user_parlays"), newParlay);
+          feedbackEl.textContent = "✓ Saved live to Firestore Tracker!";
+        } else {
+          userParlaysData.unshift(newParlay);
+          localStorage.setItem("qg_local_user_parlays", JSON.stringify(userParlaysData));
+          renderAutopsyTab();
+          feedbackEl.textContent = "✓ Saved to Tracker (Demo/Local Mode)!";
+        }
+        feedbackEl.classList.remove("hidden");
+        setTimeout(() => feedbackEl.classList.add("hidden"), 3500);
+      } catch (err) {
+        alert("Error saving parlay: " + err.message);
+      }
+    };
+
+    // =====================================================================
+    // TAB NAVIGATION & CONFIG MODAL HANDLERS
+    // =====================================================================
+
+    window.switchTab = function (tabName) {
+      ["board", "final5", "autopsy"].forEach((t) => {
+        const view = document.getElementById(`view-${t}`);
+        const btn = document.getElementById(`tabBtn-${t}`);
+        if (t === tabName) {
+          view.classList.remove("hidden");
+          btn.className = "px-4 py-2 rounded-lg text-xs font-semibold transition-all bg-emerald-500 text-slate-950 shadow";
+        } else {
+          view.classList.add("hidden");
+          btn.className = "px-4 py-2 rounded-lg text-xs font-semibold transition-all text-slate-300 hover:text-white";
+        }
+      });
+    };
+
+    window.openConfigModal = function () {
+      const saved = localStorage.getItem("qg_firebase_config");
+      if (saved) {
+        document.getElementById("firebaseConfigTextarea").value = saved;
+      }
+      document.getElementById("configModal").classList.remove("hidden");
+      document.getElementById("configModal").classList.add("flex");
+    };
+
+    window.closeConfigModal = function () {
+      document.getElementById("configModal").classList.add("hidden");
+      document.getElementById("configModal").classList.remove("flex");
+    };
+
+    window.loadDemoDataset = function () {
+      isLiveFirestore = false;
+      matchupsData = [...DEMO_MATCHUPS];
+      aiParlaysData = [...DEMO_FINAL_5];
+      const localSaved = JSON.parse(localStorage.getItem("qg_local_user_parlays") || "[]");
+      userParlaysData = [...localSaved, ...DEMO_GRADED_HISTORY];
+      modelLearningsData = [...DEMO_LEARNINGS];
+
+      document.getElementById("dbConnectionBadge").textContent = "Demo Dataset Active";
+      document.getElementById("dbConnectionBadge").className =
+        "px-2.5 py-1 rounded-full text-[11px] font-mono bg-amber-500/15 text-amber-300 border border-amber-500/30";
+      document.getElementById("pipelineStatusText").textContent =
+        "Season 2026 · Week 10 · Weather: Open-Meteo Live · Odds: Polymarket Gamma · AI: gemini-3.8-flash";
+
+      renderMatchupBoard();
+      renderFinal5Tab();
+      renderAutopsyTab();
+      renderParlaySlip();
+      closeConfigModal();
+    };
+
+    window.saveFirebaseConfigFromModal = function () {
+      const raw = document.getElementById("firebaseConfigTextarea").value.trim();
+      try {
+        const parsed = JSON.parse(raw);
+        if (!parsed.projectId) throw new Error("Missing projectId in firebaseConfig");
+        localStorage.setItem("qg_firebase_config", JSON.stringify(parsed));
+        connectToFirestore(parsed);
+        closeConfigModal();
+      } catch (err) {
+        alert("Invalid Firebase JSON config: " + err.message);
+      }
+    };
+
+    function connectToFirestore(configObj) {
+      try {
+        const app = getApps().length ? getApps()[0] : initializeApp(configObj);
+        db = getFirestore(app);
+        isLiveFirestore = true;
+
+        document.getElementById("dbConnectionBadge").textContent = `Connected: ${configObj.projectId}`;
+        document.getElementById("dbConnectionBadge").className =
+          "px-2.5 py-1 rounded-full text-[11px] font-mono bg-emerald-500/15 text-emerald-300 border border-emerald-500/30";
+
+        onSnapshot(collection(db, "weekly_matchups"), (snap) => {
+          const rows = [];
+          snap.forEach((d) => rows.push(d.data()));
+          if (rows.length) {
+            matchupsData = rows;
+            renderMatchupBoard();
+          }
+        });
+
+        onSnapshot(collection(db, "ai_parlays"), (snap) => {
+          const rows = [];
+          snap.forEach((d) => rows.push(d.data()));
+          if (rows.length) {
+            aiParlaysData = rows.sort((a, b) => Number(a.parlay_rank) - Number(b.parlay_rank));
+            renderFinal5Tab();
+          }
+        });
+
+        onSnapshot(collection(db, "user_parlays"), (snap) => {
+          const rows = [];
+          snap.forEach((d) => rows.push({ id: d.id, ...d.data() }));
+          userParlaysData = rows.length ? rows : [...DEMO_GRADED_HISTORY];
+          renderAutopsyTab();
+        });
+
+        onSnapshot(collection(db, "model_learnings"), (snap) => {
+          const rows = [];
+          snap.forEach((d) => rows.push(d.data()));
+          if (rows.length) {
+            modelLearningsData = rows;
+            renderAutopsyTab();
+          }
+        });
+
+        onSnapshot(doc(db, "system_meta", "pipeline_status"), (snap) => {
+          if (snap.exists()) {
+            const meta = snap.data();
+            document.getElementById("pipelineStatusText").textContent =
+              `Season ${meta.season} · Week ${meta.current_week} · Last Sync: ${new Date(meta.last_run_utc).toLocaleTimeString()} · Model: ${meta.model_used}`;
+          }
+        });
+      } catch (err) {
+        console.error("Firestore init error, falling back to demo data:", err);
+        loadDemoDataset();
+      }
+    }
+
+    // Boot Application
+    window.addEventListener("DOMContentLoaded", () => {
+      const storedCfg = localStorage.getItem("qg_firebase_config");
+      const activeCfg = DEFAULT_FIREBASE_CONFIG || (storedCfg ? JSON.parse(storedCfg) : null);
+      loadDemoDataset();
+      if (activeCfg) {
+        connectToFirestore(activeCfg);
+      }
+    });
+  </script>
+</body>
+</html>
